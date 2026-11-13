@@ -1,0 +1,15 @@
+include README.md LICENSE pyproject.toml .gitignore RELEASE_FILES.json
+recursive-include hivemind *.py *.schema.json *-global.md
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include docs *.md
+global-exclude *.py[cod] .DS_Store
+prune output
+prune dist
+prune build
+prune wiki
+prune sources
+prune .history
+prune .state
+prune .cache
+prune config

@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "note_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,79}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,79}$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "feedback_record": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "enum": [
+            "agent",
+            "user"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "helpful",
+            "unhelpful",
+            "not_used"
+          ]
+        },
+        "used": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,79}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        },
+        "cited": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,79}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        },
+        "missing": {
+          "enum": [
+            "none",
+            "context",
+            "stale",
+            "evidence",
+            "decision",
+            "next_step",
+            "other"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "actor",
+        "outcome",
+        "used",
+        "cited",
+        "missing",
+        "id",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "work_item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^step-[0-9a-f]{16}$"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 800,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "status": {
+          "enum": [
+            "agreed",
+            "proposed"
+          ]
+        },
+        "state": {
+          "enum": [
+            "open",
+            "waiting",
+            "done",
+            "dropped"
+          ]
+        },
+        "source_id": {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "observed_at": {
+          "type": "string",
+          "maxLength": 50,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "evidence": {
+          "enum": [
+            "confirmed",
+            "reported",
+            "inferred",
+            "disputed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 800
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "status",
+        "state",
+        "source_id",
+        "observed_at",
+        "evidence",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

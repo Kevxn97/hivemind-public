@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hivemind-local"
+version = "0.1.0a1"
+description = "Local, source-labelled project memory for agent continuity"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: POSIX",
+  "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Repository = "https://github.com/Kevxn97/hivemind-public"
+Issues = "https://github.com/Kevxn97/hivemind-public/issues"
+
+[project.scripts]
+hive = "hivemind.cli:main"
+
+[tool.setuptools]
+packages = ["hivemind", "hivemind.integrations"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+hivemind = ["schemas/*.schema.json", "integrations/*-global.md"]

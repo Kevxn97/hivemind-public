@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["contract_version", "ok", "view", "ref", "revision", "current_revision", "historical", "evidence", "freshness", "verified", "notice", "budget"],
+  "properties": {
+    "contract_version": {"const": 1}, "ok": {"const": true}, "view": {"const": "evidence"},
+    "ref": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*@[a-f0-9]{64}$"},
+    "revision": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "current_revision": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "historical": {"type": "boolean"}, "evidence": {"enum": ["confirmed", "reported", "inferred", "disputed"]},
+    "text": {"type": "string"}, "offset": {"type": "integer", "minimum": 0},
+    "next_offset": {"type": ["integer", "null"], "minimum": 0},
+    "budget": {"type": "object", "required": ["max_bytes", "bytes", "unit"]}
+  }
+}

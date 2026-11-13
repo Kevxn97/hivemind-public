@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "actor": {
+      "enum": [
+        "agent",
+        "user"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "helpful",
+        "unhelpful",
+        "not_used"
+      ]
+    },
+    "used": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,79}$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "cited": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,79}$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "missing": {
+      "enum": [
+        "none",
+        "context",
+        "stale",
+        "evidence",
+        "decision",
+        "next_step",
+        "other"
+      ]
+    }
+  },
+  "required": [
+    "actor",
+    "outcome",
+    "used",
+    "cited",
+    "missing"
+  ],
+  "additionalProperties": false
+}

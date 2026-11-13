@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "note_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,79}$"
+    },
+    "expected_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,120}$"
+        },
+        "resource": {
+          "type": "string",
+          "maxLength": 1000,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 280,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "observed_at": {
+          "type": "string",
+          "maxLength": 50,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "resource",
+        "title",
+        "observed_at"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "enum": [
+        "confirmed",
+        "reported",
+        "inferred",
+        "disputed"
+      ]
+    },
+    "project_state": {
+      "type": "string",
+      "maxLength": 1600
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "maxLength": 800,
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 800,
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "status": {
+            "enum": [
+              "agreed",
+              "proposed"
+            ]
+          }
+        },
+        "required": [
+          "decision",
+          "reason",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 8
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "maxItems": 8
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 800,
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "status": {
+            "enum": [
+              "agreed",
+              "proposed"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 8
+    },
+    "step_updates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "agreed",
+                  "proposed"
+                ]
+              },
+              "state": {
+                "const": "open"
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "required": [
+              "text",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^step-[0-9a-f]{16}$"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "agreed",
+                  "proposed"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "open",
+                  "waiting",
+                  "done",
+                  "dropped"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "maxItems": 8
+    }
+  },
+  "required": [
+    "session_id",
+    "note_id",
+    "expected_revision",
+    "source",
+    "evidence",
+    "project_state",
+    "decisions",
+    "open_questions",
+    "next_steps"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "project_state"
+      ],
+      "properties": {
+        "project_state": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    {
+      "required": [
+        "decisions"
+      ],
+      "properties": {
+        "decisions": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "open_questions"
+      ],
+      "properties": {
+        "open_questions": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "next_steps"
+      ],
+      "properties": {
+        "next_steps": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "step_updates"
+      ],
+      "properties": {
+        "step_updates": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    }
+  ]
+}

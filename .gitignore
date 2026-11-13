@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+output/
+.DS_Store
+# Vaults belong outside this source tree. Ignore accidental local state.
+wiki/
+sources/
+INBOX/
+.history/
+.state/
+.cache/
+.hivemind.json
+.hive.lock
+.pending.json
+config/

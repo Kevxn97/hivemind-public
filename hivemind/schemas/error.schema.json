@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": 1
+    },
+    "ok": {
+      "const": false
+    },
+    "error_code": {
+      "enum": [
+        "INVALID_ARGUMENT",
+        "SESSION_NOT_FOUND",
+        "SESSION_EXISTS",
+        "SESSION_CLOSED",
+        "REVISION_CONFLICT",
+        "INVALID_HANDOFF",
+        "INVALID_STATE",
+        "IO_ERROR",
+        "RECOVERY_REQUIRED",
+        "LIMIT_EXCEEDED",
+        "UNKNOWN_PROJECT",
+        "INTERNAL_ERROR",
+        "SCHEMA_INVALID"
+      ]
+    },
+    "error": {
+      "type": "string",
+      "maxLength": 16000,
+      "minLength": 1,
+      "pattern": "\\S"
+    }
+  },
+  "required": [
+    "contract_version",
+    "ok",
+    "error_code",
+    "error"
+  ],
+  "additionalProperties": false
+}

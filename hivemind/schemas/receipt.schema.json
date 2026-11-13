@@ -1,0 +1,591 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "contract_version": {
+      "const": 1
+    },
+    "ok": {
+      "const": true
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "agent": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$"
+    },
+    "cluster": {
+      "type": "string",
+      "pattern": "^projects/[a-z][a-z0-9-]{1,79}$"
+    },
+    "status": {
+      "enum": [
+        "context_offered",
+        "saved",
+        "no_change"
+      ]
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "previous_context_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "offered": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,79}$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 512
+    },
+    "refreshed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "committed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "intent_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "event": {
+      "type": "string",
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,79}$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "previous_session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "feedback": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "actor": {
+            "enum": [
+              "agent",
+              "user"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "helpful",
+              "unhelpful",
+              "not_used"
+            ]
+          },
+          "used": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{1,79}$"
+                },
+                "revision": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 64
+          },
+          "cited": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{1,79}$"
+                },
+                "revision": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 64
+          },
+          "missing": {
+            "enum": [
+              "none",
+              "context",
+              "stale",
+              "evidence",
+              "decision",
+              "next_step",
+              "other"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "actor",
+          "outcome",
+          "used",
+          "cited",
+          "missing",
+          "id",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 32
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source": {
+          "enum": [
+            "startup",
+            "resume",
+            "clear",
+            "compact",
+            "fork"
+          ]
+        },
+        "last_source": {
+          "enum": [
+            "startup",
+            "resume",
+            "clear",
+            "compact",
+            "fork"
+          ]
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_reason": {
+          "enum": [
+            "other",
+            "clear",
+            "logout",
+            "prompt_input_exit",
+            "exit",
+            "unknown",
+            "resume"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "work_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^step-[0-9a-f]{16}$"
+          },
+          "status": {
+            "enum": [
+              "agreed",
+              "proposed"
+            ]
+          },
+          "state": {
+            "enum": [
+              "open",
+              "waiting",
+              "done",
+              "dropped"
+            ]
+          },
+          "source_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "state",
+          "source_id"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "selected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,79}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "additionalProperties": true
+          },
+          "maxItems": 512
+        }
+      },
+      "required": [
+        "text",
+        "selected"
+      ],
+      "additionalProperties": true
+    },
+    "workflow": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "project": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,79}$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "id",
+            "revision"
+          ],
+          "additionalProperties": true
+        },
+        "work_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^step-[0-9a-f]{16}$"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "agreed",
+                  "proposed"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "open",
+                  "waiting",
+                  "done",
+                  "dropped"
+                ]
+              },
+              "source_id": {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "observed_at": {
+                "type": "string",
+                "maxLength": 50,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "evidence": {
+                "enum": [
+                  "confirmed",
+                  "reported",
+                  "inferred",
+                  "disputed"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 800
+              }
+            },
+            "required": [
+              "id",
+              "text",
+              "status",
+              "state",
+              "source_id",
+              "observed_at",
+              "evidence",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        },
+        "open_work": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^step-[0-9a-f]{16}$"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 800,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "agreed",
+                  "proposed"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "open",
+                  "waiting",
+                  "done",
+                  "dropped"
+                ]
+              },
+              "source_id": {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "observed_at": {
+                "type": "string",
+                "maxLength": 50,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "evidence": {
+                "enum": [
+                  "confirmed",
+                  "reported",
+                  "inferred",
+                  "disputed"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 800
+              }
+            },
+            "required": [
+              "id",
+              "text",
+              "status",
+              "state",
+              "source_id",
+              "observed_at",
+              "evidence",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        },
+        "changes": {
+          "type": "object"
+        },
+        "lessons": {
+          "type": "object"
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32
+        },
+        "next_commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32
+        }
+      },
+      "required": [
+        "version",
+        "project",
+        "work_items",
+        "open_work",
+        "changes",
+        "lessons",
+        "gaps",
+        "next_commands"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_id",
+    "agent",
+    "cluster",
+    "status",
+    "opened_at",
+    "previous_context_at",
+    "offered"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "status": {
+              "const": "context_offered"
+            }
+          }
+        },
+        {
+          "required": [
+            "closed_at"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "context_offered",
+                "no_change"
+              ]
+            }
+          }
+        },
+        {
+          "required": [
+            "committed_at",
+            "payload_sha256",
+            "event",
+            "notes",
+            "work_items"
+          ]
+        }
+      ]
+    }
+  ]
+}
