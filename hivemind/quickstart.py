@@ -140,6 +140,8 @@ def _text(result):
             lines.append('Try asking “What do you remember about this project?”')
     lines.extend(['', 'Remember another decision', result['commands']['remember'],
                   '', 'Connect Gmail, Calendar or another source', result['commands']['sources']])
+    lines.extend(['','Optional background sync and weekly review',result['commands']['automation'],
+                  'Start with everything off; choose sources and activate each feature when ready.'])
     return '\n'.join(lines)
 
 
@@ -192,6 +194,7 @@ def execute(args, root):
     memory_result = _first_memory(root, project, memory) if memory else None
     connection = _connection(root, agent, interactive, args.connect)
     commands = {'sources': shlex.join(cli_command(root, 'sources')),
+                'automation': shlex.join(cli_command(root, 'automation')),
                 'remember': shlex.join(cli_command(root, 'remember', 'Your next decision'))}
     if agent != 'none':
         commands['connect'] = shlex.join(cli_command(root, 'connect', agent, '--apply'))

@@ -119,6 +119,7 @@ def config(root):
         for row in rows:
             if not isinstance(row,dict) or not isinstance(row.get('id'),str) or not ID.fullmatch(row['id']) or row['id'] in seen or row['id'].startswith('inbox:'):raise ValueError('Invalid or duplicate source ID')
             seen.add(row['id'])
+            if 'enabled' in row and type(row['enabled']) is not bool:raise ValueError('Invalid source enabled state')
             if kind=='files':
                 source_path=Path(text(row.get('path'),'source path')).expanduser()
                 source_path=(root/source_path).resolve() if not source_path.is_absolute() else source_path.resolve()
@@ -130,7 +131,7 @@ def config(root):
             else:
                 days=row.get('lookback_days',7)
                 if type(days)!=int or not 1<=days<=31:raise ValueError('Remote initial window must be 1..31 days')
-    return payload
+    return {**payload, **{kind:[row for row in payload.get(kind,[]) if row.get('enabled',True)] for kind in ('files','remote')}}
 
 def _selected(root):
     root=Path(root).resolve();result=[dict(row) for row in config(root).get('files',[])]
@@ -281,6 +282,8 @@ def begin_run(root,owner=None,plan=None):
         local=[row for row in _scan(root,state)['sources'] if row['id'] in plan['source_ids']]
         result={'schema_version':1,'id':stamp,'started_at':now(),'local':local,
                 'windows':plan['windows'],'owner':owner,'plan':plan,'dispatch_id':plan.get('dispatch_id')}
+        selected=_selected(root)+config(root).get('remote',[])
+        result['source_config']={row['id']:row for row in selected if row['id'] in plan['source_ids']}
         atomic(root/'.state/runs'/stamp/'manifest.json',result)
         state['active_run']=stamp;atomic(root/'.state/sources.json',state)
         return result

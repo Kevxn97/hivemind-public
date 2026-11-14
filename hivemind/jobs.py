@@ -156,10 +156,31 @@ def dispatch_status(root, dispatch_id):
         return public(json.loads(path.read_text())) if path.exists() else None
 
 
+def view(root):
+    """UI state separates a disabled dispatcher from an idle/running job."""
+    value=status(root)
+    if (Path(root)/'.hivemind.json').is_file() and value['status']!='running':
+        if __package__:
+            from . import feature_controls,automation
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import feature_controls,automation
+        state='disabled' if not feature_controls.settings(root)['sync_enabled'] else 'paused' if automation.status(root)['paused'] else None
+        if state:return {**value,'last_status':value['status'],'status':state}
+    return value
+
+
 def start(root, *, plan=None, dispatch_id=None):
     root = Path(root).resolve()
     if (root / '.hivemind.json').exists():
-        raise ValueError('Automatic source sync is unavailable in the public preview; use the explicit session handoff workflow.')
+        if __package__:
+            from . import feature_controls
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import feature_controls
+        preferences=feature_controls.require_sync(root)
+    else:
+        preferences=None
     if dispatch_id is not None:dispatch_path(root,dispatch_id)
     if plan is not None:
         plan=ingest.validate_plan(root,plan)
@@ -178,7 +199,7 @@ def start(root, *, plan=None, dispatch_id=None):
             accepted=json.loads(receipt.read_text()) if receipt.exists() else None
             if accepted and not accepted.get('start_failed',False):return public(accepted)
         plan=plan if plan is not None else ingest.prepare_plan(root,dispatch_id=dispatch_id)
-        binary = shutil.which('codex')
+        binary = preferences['codex'] if preferences else shutil.which('codex')
         if not binary:
             fallback = Path.home()/'.local/bin/codex'
             binary = str(fallback) if fallback.is_file() else None
@@ -213,6 +234,13 @@ def update(root, job_id, **fields):
 
 
 def prompt_for(root, run_id):
+    if (Path(root)/'.hivemind.json').is_file():
+        if __package__:
+            from .sync_prompt import prompt
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind.sync_prompt import prompt
+        return prompt(root,run_id)
     return (
         '$hivemind-sync\n'
         f'Bearbeite den bereits vorbereiteten HiveMind-Lauf {run_id}. '
@@ -262,11 +290,22 @@ def agent_guard(root, run_id, binary, lease_fd, max_seconds):
     signal.signal(signal.SIGINT, interrupted)
     with os.fdopen(lease_fd, 'a'):
         try:
+            environment=None
+            if (Path(root)/'.hivemind.json').is_file():
+                if __package__:
+                    from . import feature_controls
+                else:
+                    sys.path.insert(0,str(BASE.parent))
+                    from hivemind import feature_controls
+                preferences=feature_controls.require_sync(root)
+                # Select only the explicitly configured profile. No credentials,
+                # model, approval policy, hooks or global configuration are copied.
+                environment=dict(os.environ,CODEX_HOME=preferences['agent_home'])
             child = subprocess.Popen(
                 [binary, '--no-daemon', 'exec', '--ephemeral', '--skip-git-repo-check',
                  '--cd', str(root), '--json', prompt_for(root, run_id)],
                 cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+                stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True,env=environment)
             return child.wait(timeout=max_seconds)
         except subprocess.TimeoutExpired:
             return 124
@@ -296,6 +335,13 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
     try:
+        if (root/'.hivemind.json').is_file():
+            if __package__:
+                from . import feature_controls
+            else:
+                sys.path.insert(0,str(BASE.parent))
+                from hivemind import feature_controls
+            feature_controls.require_sync(root)
         with locked(root):
             current = read(root)
             if current.get('job_id') != job_id or current['status'] != 'running':
@@ -304,7 +350,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
         manifest = ingest.begin_run(root, owner=job_id, plan=current.get('plan'))
         run_id = manifest['id']
         update(root, job_id, run_id=run_id)
-        if manifest['plan']['reason'] != 'local-change' and ingest.config(root).get('calendar', {}).get('enabled', True):
+        if manifest['plan']['reason'] != 'local-change' and ingest.config(root).get('calendar', {}).get('enabled', not (root/'.hivemind.json').exists()):
             snapshot = ingest.refresh_calendar(root)
             calendar_ok = snapshot.get('status') == 'ok'
         update(root, job_id, phase='curating',

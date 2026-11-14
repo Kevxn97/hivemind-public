@@ -57,12 +57,16 @@ class EasySourcesE2E(unittest.TestCase):
                     break
             if process.poll() is None:
                 process.terminate()
-            process.wait(timeout=5)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
         finally:
             os.close(master)
-        self.case['commands'].append({'argv': command, 'returncode': process.returncode,
-                                      'terminal': transcript, 'unanswered_prompts': pending})
-        self.save()
+            self.case['commands'].append({'argv': command, 'returncode': process.returncode,
+                                          'terminal': transcript, 'unanswered_prompts': pending})
+            self.save()
         self.assertEqual(process.returncode, 0, transcript)
         self.assertFalse(pending, transcript)
         return transcript

@@ -132,9 +132,36 @@ to a connected agent is subject to that agent host's processing and permissions.
 Local storage is private by location and filesystem permissions, not encryption.
 Back up the whole vault, including `.history`, privately.
 
-Automatic source sync and background installation are unavailable in this public
-preview. Use explicit project context, attributable session handoffs and selected
-source captures. Optional native Calendar helpers require separate local setup.
+## Optional automation
+
+Run `hive automation`, or press **b** in the terminal, to configure selected
+sources, a Codex profile, background startup and weekly knowledge review. Every
+feature starts **off** and can be enabled or disabled separately. The menu shows
+the selected vault and previews each change before one confirmation.
+
+1. Select individual local text files or scoped Gmail, Calendar, Wispr or MCP
+   sources. Each source can be disabled or removed while keeping its knowledge.
+2. For source sync, choose an installed Codex executable and an existing profile.
+   Verify login and connector access in that profile first. HiveMind retains its
+   model and permissions; sync uses that account and may incur model usage/costs.
+3. Enable sync and run it once. Completion requires validated source receipts;
+   unavailable connectors remain blocked rather than being marked complete.
+4. Enable background startup to run after login, using a separate service for
+   each vault on macOS (launchd) or Linux (systemd user service).
+5. Optionally enable weekly local review. It prepares up to five evidence-linked
+   items for inspection, without model calls or automatically rewriting facts.
+
+The default schedule checks changed local inputs after 120 quiet seconds, with
+at least 30 minutes between automatic syncs, and remote sources daily at 09:00.
+Weekly review defaults to Sunday at 09:00. Change the times in the menu. Incoming
+updates can be paused across handoffs, captures and new automation runs. Disabling
+background startup removes only that vault's service. Already running sync jobs
+finish independently and retain their results and history.
+
+[Activation, deactivation and agent commands](docs/AUTOMATION.md)
+
+Optional native Calendar helpers require separate local setup. Remote Calendar
+sync uses the connected agent's tools and the scope selected by the user.
 
 ## Agent workflow
 

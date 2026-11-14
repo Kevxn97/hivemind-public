@@ -97,6 +97,7 @@ def lock_handle(root,name):
 
 
 def daemon_active(root):
+    if not (Path(root)/'.state/background-daemon.lock').exists():return False
     with lock_handle(root,'background-daemon.lock') as handle:
         try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return True
@@ -111,6 +112,13 @@ def status(root):
     root=Path(root).resolve()
     try:value=read(root)
     except (OSError,ValueError) as exc:value={'schema_version':1,'status':'degraded','error':str(exc)[:500]}
+    if (root/'.hivemind.json').is_file():
+        if __package__:
+            from . import service_control
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import service_control
+        return {**value,'daemon_running':daemon_active(root),**service_control.status(root)}
     return {**value,'daemon_running':daemon_active(root),'installed':agent_path().is_file(),'label':LABEL}
 
 
@@ -274,6 +282,22 @@ def _tick(root,state,cfg,at,deps):
     if not cfg['enabled']:
         state.update(status='paused',message='Automatik in config/background.json ausgeschaltet.')
         return save(root,state)
+    if (root/'.hivemind.json').is_file():
+        if __package__:
+            from . import feature_controls, automation, maintenance
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import feature_controls, automation, maintenance
+        if automation.status(root)['paused']:
+            state.update(status='paused',message='Incoming updates paused; no new sync or review starts.')
+            return save(root,state)
+        preferences=feature_controls.settings(root)
+        if preferences['maintenance_enabled']:
+            review=maintenance.run(root,at=at,scheduled=True)
+            state['maintenance']={'finished_at':review['finished_at'],'items':len(review['review']['items'])}
+        if not preferences['sync_enabled']:
+            state.update(message='Background active; source sync disabled. Weekly review follows its schedule.')
+            return save(root,state)
     if not (root/'config/sources.json').is_file():
         raise ValueError('config/sources.json fehlt; automatischer Abgleich bleibt aus.')
     source_config=ingest.config(root)
@@ -322,7 +346,8 @@ def _tick(root,state,cfg,at,deps):
                     state['calendar_attempted_at']=exported
                     state['calendar']={'status':'ok','exported_at':exported,'event_count':len(previous.get('events',[]))}
             except (OSError,ValueError,TypeError):pass
-    if elapsed(at,state.get('calendar_attempted_at'))>=cfg['calendar_seconds']:
+    if (source_config.get('calendar',{}).get('enabled',not (root/'.hivemind.json').exists())
+            and elapsed(at,state.get('calendar_attempted_at'))>=cfg['calendar_seconds']):
         state['calendar_attempted_at']=stamp(at)
         try:
             calendar=deps.calendar(root)
@@ -424,7 +449,14 @@ def _launch(runner,args):
 
 def install(root,*,launchagents=None,runner=None,uid=None):
     if (Path(root) / '.hivemind.json').exists():
-        raise ValueError('Background installation is unavailable in the public preview; use the explicit agent connection and handoff workflow.')
+        if not config(root)['enabled']:
+            raise ValueError('Background scheduling is disabled. Enable background with hive automation.')
+        if __package__:
+            from . import service_control
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import service_control
+        return service_control.install(root,directory=launchagents,runner=runner)
     root=Path(root).resolve();config(root);runner=runner or subprocess.run;uid=os.getuid() if uid is None else uid
     path=agent_path(launchagents);path.parent.mkdir(parents=True,exist_ok=True)
     executable=Path(sys.executable).absolute()
@@ -448,6 +480,15 @@ def install(root,*,launchagents=None,runner=None,uid=None):
 
 
 def uninstall(root,*,launchagents=None,runner=None,uid=None):
+    if (Path(root)/'.hivemind.json').is_file():
+        if __package__:
+            from . import service_control
+        else:
+            sys.path.insert(0,str(BASE.parent))
+            from hivemind import service_control
+        cfg=config(root);cfg['enabled']=False
+        ingest.atomic(Path(root)/'config/background.json',cfg)
+        return service_control.uninstall(root,directory=launchagents,runner=runner)
     runner=runner or subprocess.run;uid=os.getuid() if uid is None else uid;path=agent_path(launchagents);target='gui/'+str(uid)+'/'+LABEL
     result=_launch(runner,['/bin/launchctl','bootout',target])
     if result.returncode!=0:

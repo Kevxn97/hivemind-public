@@ -112,7 +112,7 @@ class PortableReleaseE2E(unittest.TestCase):
         stub.chmod(0o700)
         env = dict(self.env, PATH=str(binaries) + os.pathsep + os.defpath)
         error = self.cli('--root', self.vault, 'sync', '--json', ok=False, env=env)
-        self.assertIn('public preview', json.dumps(error).lower())
+        self.assertIn('disabled', json.dumps(error).lower())
         self.assertFalse(invoked.exists())
         self.assertEqual(before, snapshot(self.vault))
 
@@ -137,7 +137,7 @@ else:
         result = subprocess.run([self.python, '-B', '-c', code, str(self.vault), str(self.folder / 'launchagents')],
                                 env=self.env, cwd=self.folder, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('public preview', result.stdout)
+        self.assertIn('disabled', result.stdout)
         self.assertEqual(before, snapshot(self.vault))
         self.assertFalse((self.folder / 'launchagents').exists())
 

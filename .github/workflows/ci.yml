@@ -49,6 +49,7 @@ jobs:
           python scripts/verify.py --pattern test_source_connections_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_quickstart_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_easy_sources_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
+          python scripts/verify.py --pattern test_automation_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
       - name: Preserve reproducible check reports
         if: always()
         uses: actions/upload-artifact@v7

@@ -49,7 +49,7 @@ def snapshot(root):
     else:
         import jobs
     check, notes = knowledge(root)
-    return {'knowledge': check, 'background': service_status(root), 'job': jobs.status(root),
+    return {'knowledge': check, 'background': service_status(root), 'job': jobs.view(root),
             'sources': ingest.source_status(root),
             'active_notes': sum(not n.get('archived', False) and n['status'] != 'deprecated' for n in notes.values()),
             'pending_thoughts': sum(not item['processed'] for item in ingest.inbox(root))}
@@ -73,7 +73,7 @@ def plain_status(data):
         f"  Eingang      {data['pending_thoughts']} offen",
         f"  Dienst       {'läuft' if running else 'gestoppt'}{operational}",
         '  Automatik    '+str(bg.get('message') or 'Stand wird geprüft.'),
-        f"  Abgleich     {job.get('status', 'idle')}", '',
+        '  Abgleich     '+{'disabled':'ausgeschaltet','paused':'pausiert'}.get(job.get('status'),job.get('status','idle')), '',
         '  hive          Terminal öffnen', '  hive search   Wissen suchen',
         '  hive capture  Gedanken festhalten', '  hive sync     Quellen abgleichen',
         '  hive status   Hintergrund prüfen', line])

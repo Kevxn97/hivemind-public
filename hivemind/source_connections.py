@@ -558,13 +558,16 @@ def execute(args, root):
         if action is None:
             if not _interactive(args):
                 return {'action': 'guide', 'applied': False, 'text': GUIDE}
-            print('1. Gmail\n2. Google Calendar\n3. Remote MCP server\n4. Capture a reviewed memory', file=sys.stderr)
-            choice = _ask('Choose a source [1–4]')
+            print('1. Gmail\n2. Google Calendar\n3. Remote MCP server\n4. Capture a reviewed memory\n5. Automatic sync and selected sources', file=sys.stderr)
+            choice = _ask('Choose a source [1–5]')
             if choice in {'1', '2', '3'}:
                 args.source_action = action = 'setup'
                 args.kind = {'1': 'gmail', '2': 'calendar', '3': 'mcp'}[choice]
                 args.agent = args.project = args.name = args.url = None
                 args.apply = False
+            elif choice == '5':
+                from . import feature_controls
+                return feature_controls.menu(root)
             elif choice == '4':
                 args.source_action = 'capture'
                 args.file = args.project = args.kind = args.title = args.summary = args.source = args.observed_at = args.preview = None

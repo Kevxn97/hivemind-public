@@ -72,7 +72,7 @@ AREAS = (('personal','Persönlich'),('people','Personen'),('work','Arbeit'),('pr
 MARKS = {'confirmed':('●','ok'),'reported':('○','mute'),'inferred':('◌','mute'),'disputed':('◇','error')}
 TONES = {'complete':'ok','ok':'ok','active':'ok','idle':'soft','running':'accent','partial':'due','pending':'due',
          'stale':'due','incomplete':'due','stopped':'due','not_run':'mute','unavailable':'mute','failed':'error','blocked':'error'}
-STATUS = {'idle':'bereit', 'running':'läuft', 'complete':'vollständig',
+STATUS = {'idle':'bereit', 'disabled':'ausgeschaltet', 'paused':'pausiert', 'running':'läuft', 'complete':'vollständig',
           'partial':'teilweise', 'failed':'fehlgeschlagen', 'pending':'offen',
           'not_run':'noch nicht gelesen', 'unavailable':'nicht verfügbar',
           'blocked':'blockiert', 'incomplete':'unvollständig', 'ok':'aktuell',
@@ -172,7 +172,7 @@ def snapshot(root):
     for key,operation in (
         ('inbox',lambda:ingest.inbox(root)),
         ('sources',lambda:ingest.source_status(root)['sources']),
-        ('job',lambda:jobs.status(root)),
+        ('job',lambda:jobs.view(root)),
         ('agenda',lambda:_agenda(root)),
         ('background',lambda:_background(root)),
     ):
@@ -407,6 +407,7 @@ class Interface:
         self.fresh=queue.Queue();self.loading=False;self.last_key=time.monotonic()
         self.sky=constellation.Sky();self.trail=[];self.network_return=None;self.immersive=True
         self.tab={'overview':0,'knowledge':1,'network':2,'inbox':3,'sources':4}.get(initial_view,0)
+        self.automation_entry=initial_view=='automation'
         self.reload()
         self.accent=curses.A_BOLD
         self.levels=[curses.A_DIM]*5+[curses.A_NORMAL]*6+[curses.A_BOLD]*5
@@ -874,13 +875,14 @@ class Interface:
             self.show_text([(line,'error') for error in self.data['errors'] for line in wrap(error,width-7)],6,bottom)
         else:(self.view_overview,self.view_notes,self.view_network,self.view_inbox,self.view_sources)[self.tab](6,bottom)
         self.rule(height-5)
-        compact=width<76
+        compact=width<100
         hints='D Änderungen · w Warum · a Wirkung · e Erfahrungen' if compact else 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen'
         self.put(height-4,3,self.notice or hints,self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
         x=3
         shortcuts = [('1–5','Tabs' if compact else 'Ansicht'), ('m','Wissen' if compact else 'Erinnerungen')]
         if (self.root / '.hivemind.json').is_file():
             shortcuts.append(('s','Quellen'))
+            shortcuts.append(('b','Auto' if compact else 'Automatik'))
         shortcuts.extend([('q','Ende'), ('/','Suche'), ('n','Neu' if compact else 'Gedanke')])
         if not (self.root / '.hivemind.json').is_file():
             shortcuts.extend([('s','Sync' if compact else 'Abgleich'), ('r','Kal.' if compact else 'Kalender')])
@@ -984,6 +986,15 @@ class Interface:
     def handle(self,key):
         if self.modal:self.handle_modal(key);return True
         if key in ('q','\x03'):return False
+        if key=='b' and (self.root/'.hivemind.json').is_file():
+            if __package__:
+                from .automation_ui import Panel
+            else:
+                sys.path.insert(0,str(BASE.parent))
+                from hivemind.automation_ui import Panel
+            Panel(self).run()
+            self.reload();self.clear()
+            return True
         if key=='m':
             if __package__:
                 from . import memory_control
@@ -1054,6 +1065,14 @@ class Interface:
         return True
 
     def loop(self):
+        if self.automation_entry:
+            if __package__:
+                from .automation_ui import Panel
+            else:
+                sys.path.insert(0,str(BASE.parent))
+                from hivemind.automation_ui import Panel
+            Panel(self).run()
+            return 0
         while True:
             try:
                 message=self.work.get_nowait();self.busy=False;self.reload();self.notice=message

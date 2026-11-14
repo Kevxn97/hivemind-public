@@ -33,6 +33,8 @@ def _parser():
     source_connections.configure(sub)
     from . import quickstart
     quickstart.configure(sub)
+    from . import feature_controls
+    feature_controls.configure(sub)
     return parser
 
 
@@ -88,6 +90,7 @@ def main(argv=None):
               'Verify:   hive self-test; hive doctor\n'
               'Demo:     hive demo [--directory NEW_PATH]\n'
               'Manage:   hive memory (guided); hive memory list; hive memory show ID\n'
+              'Automate: hive automation (guided source sync, background startup, weekly review)\n'
               'Sources:  hive sources; hive sources setup gmail|calendar|mcp --agent codex|claude\n'
               'Context:  hive brief PATH; hive session-open PATH --agent codex\n'
               'Handoff:  hive session-draft ID --out FILE; hive session-close ID --file FILE\n'
@@ -106,11 +109,22 @@ def main(argv=None):
         return 0
     root = resolve_vault(global_args.root)
     command = rest[0] if rest else None
+    aliases = {'sync':['run','sync'], 'start':['enable','background'], 'stop':['disable','background']}
+    if command in aliases:
+        rest=['automation',*aliases[command],*rest[1:]];command='automation'
+    elif command=='--sync':
+        rest=['automation','run','sync',*rest[1:]];command='automation'
+    elif command=='--stop':
+        rest=['automation','disable','background',*rest[1:]];command='automation'
+    elif command=='--background' and len(rest)>1:
+        mapping={'start':['enable','background'],'stop':['disable','background'],'status':['status']}
+        if rest[1] in mapping:
+            rest=['automation',*mapping[rest[1]],*rest[2:]];command='automation'
     if (command is None and sys.stdin.isatty() and not global_args.json and not global_args.plain
             and not (root / onboarding.MARKER).is_file()):
         rest, command = ['setup'], 'setup'
     try:
-        if command in {'init', 'setup', 'connect', 'disconnect', 'doctor', 'self-test', 'demo', 'memory', 'sources', 'remember'}:
+        if command in {'init', 'setup', 'connect', 'disconnect', 'doctor', 'self-test', 'demo', 'memory', 'sources', 'remember', 'automation'}:
             args = _parser().parse_args(rest)
             args.json = global_args.json
             if command == 'init':
@@ -131,6 +145,9 @@ def main(argv=None):
                 from . import memory_control
                 require_vault(root)
                 value = memory_control.execute(args, root)
+            elif command == 'automation':
+                from . import feature_controls
+                value = feature_controls.execute(args, root)
             elif command in {'sources', 'remember'}:
                 from . import source_connections
                 require_vault(root)
@@ -143,8 +160,6 @@ def main(argv=None):
             return 1 if command in {'self-test', 'demo'} and value['status'] != 'passed' else 0
         if '--help' not in rest and '-h' not in rest and command != 'contract':
             require_vault(root)
-        if command in {'sync', 'start'} or '--sync' in rest or ('--background' in rest and 'start' in rest):
-            raise ValueError('Automatic source sync and background installation are unavailable in the public preview; use session-draft and session-close.')
         options = ['--root', str(root)]
         if command in CORE_COMMANDS or (command == 'brief' and '--hook' in rest):
             return hive.main([*options, *rest])
