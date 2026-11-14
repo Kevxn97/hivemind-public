@@ -28,6 +28,36 @@ The project uses the [MIT license](../LICENSE). Its public source repository is
 [Kevxn97/hivemind-public](https://github.com/Kevxn97/hivemind-public).
 The Python package has not been published to a package registry.
 
+## Prepared 0.1.0a2 package
+
+The [changelog](../CHANGELOG.md) covers memory controls, the synthetic demo and
+optional source connections. To verify a candidate before publication:
+
+```sh
+python3 scripts/verify.py
+python3 scripts/package_release.py --out ../hivemind-public-release
+python3 -m pip install 'build>=1.2,<2'
+python3 -m build --outdir ../hivemind-public-release
+python3 -m venv /tmp/hivemind-release-check
+/tmp/hivemind-release-check/bin/python -m pip install --no-deps ../hivemind-public-release/*.whl
+HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/verify.py --pattern test_portable_release_e2e.py
+HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/verify.py --pattern test_demo_e2e.py
+HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/verify.py --pattern test_memory_control_e2e.py
+HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/verify.py --pattern test_source_connections_e2e.py
+```
+
+Use an empty output directory and a new environment when previous artifacts
+exist. The source archive, wheel and sdist are local release candidates; building
+them does not upload or publish anything. Review their contents against the
+allowlist before publication. The source archive includes the CI definition and
+documentation, while the installed package contains only its runtime resources.
+
+The [GitHub Actions workflow](../.github/workflows/ci.yml) repeats the source and
+installed acceptance on macOS/Linux and Python 3.11/3.14 with no provider account.
+It keeps evidence even on failed jobs. Hosted results are only established once
+that workflow actually runs. [First-user testing](TRY_IT.md) and real host/OAuth
+acceptance remain separate from this synthetic evidence.
+
 ## Private vault boundary
 
 New vaults have private directory permissions, empty import configuration and

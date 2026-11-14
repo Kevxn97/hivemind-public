@@ -43,14 +43,14 @@ def prepare(source, out):
             raise ValueError('Missing or external release file: ' + relative)
         data[relative] = path.read_bytes()
     # New code and resources need explicit review before entering a release.
-    for top in ('hivemind', 'tests', 'scripts', 'docs'):
+    for top in ('hivemind', 'tests', 'scripts', 'docs', '.github'):
         for path in (source / top).rglob('*'):
             if '__pycache__' in path.parts:
                 continue
             if path.is_symlink() or (path.is_file() and str(path.relative_to(source)) not in selected):
                 raise ValueError('Unreviewed source/resource file: ' + str(path.relative_to(source)))
     out.mkdir(parents=True, exist_ok=True)
-    archive = out / 'hivemind-public-0.1.0a1.zip'
+    archive = out / 'hivemind-public-0.1.0a2.zip'
     with tempfile.NamedTemporaryFile(dir=out, suffix='.zip', delete=False) as temp:
         temporary = Path(temp.name)
     try:

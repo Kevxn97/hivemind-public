@@ -22,7 +22,7 @@ class PublicArchiveE2E(unittest.TestCase):
         self.out = self.folder / 'release'
         # Starting data is synthetic: an allowlist, a tiny app, and a fake Git history.
         (self.source / 'hivemind').mkdir()
-        (self.source / 'hivemind/__init__.py').write_text("__version__ = '0.1.0a1'\n")
+        (self.source / 'hivemind/__init__.py').write_text("__version__ = '0.1.0a2'\n")
         (self.source / 'README.md').write_text('# Synthetic project\n')
         (self.source / '.git').mkdir()
         (self.source / '.git/private-history').write_text('SYNTHETIC_GIT_HISTORY_SENTINEL')
@@ -52,7 +52,7 @@ class PublicArchiveE2E(unittest.TestCase):
         self.assertEqual(report['included_files'], len(self.manifest) + 1)
 
     def test_release_refuses_vault_content_and_unknown_code(self):
-        for relative in ('.history/private.json', 'wiki/project/private.md', 'hivemind/unreviewed.py'):
+        for relative in ('.history/private.json', 'wiki/project/private.md', 'hivemind/unreviewed.py', '.github/workflows/unreviewed.yml'):
             with self.subTest(relative=relative):
                 path = self.source / relative
                 path.parent.mkdir(parents=True, exist_ok=True)

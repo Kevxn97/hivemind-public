@@ -581,7 +581,7 @@ def close_session(root, session_id, payload=None, no_change=False, reason=""):
         _save(root, session)
         hive.apply(root, {"changes": [{"expected_revision": payload["expected_revision"], "note": updated}]},
                    actor=session["agent"] + "/session-" + session_id,
-                   reason="Structured project handoff", context="hivemind-session:" + session_id + ":" + fingerprint)
+                   reason="Structured project handoff", context="hivemind-session:" + session_id + ":" + fingerprint, respect_pause=True)
         event = _committed(root, session, fingerprint)
         if event is None:
             raise ValueError("No journal proof found for the handoff; inspect the session")

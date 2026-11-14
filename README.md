@@ -4,7 +4,8 @@ Local project memory for Codex and Claude. Preserve decisions, their sources and
 open work between sessions. Knowledge stays in a separate, readable Markdown
 vault with a journal; agents receive bounded context for the selected project.
 
-This is an early personal project. The core runs locally with Python's standard
+Built by Kevin ([Kevxn97](https://github.com/Kevxn97)) as an early personal
+project. The core runs locally with Python's standard
 library. Python 3.11+ and macOS or Linux with SQLite FTS5 are required. Windows
 is not supported directly; Linux under WSL is a possible but unverified setup.
 
@@ -17,8 +18,12 @@ git clone https://github.com/Kevxn97/hivemind-public.git
 cd hivemind-public
 python3 -m venv .venv
 .venv/bin/python -m pip install .
+source .venv/bin/activate
 .venv/bin/hive init "$HOME/.local/share/hivemind" --project /path/to/your/project
 ```
+
+Keep this environment active for the `hive` commands below so they use this
+installation. `deactivate` leaves the environment when you are done.
 
 The guided setup asks for a vault, first project and agent. Existing content is
 never imported or overwritten. You can also use deterministic commands:
@@ -37,6 +42,58 @@ Existing unrelated instructions and hooks are preserved. Codex requires its own
 hook review via `/hooks` (or the desktop hook settings) before executing them.
 `disconnect AGENT --apply` removes the managed connection.
 
+## See it work in two minutes
+
+After installation, run `.venv/bin/hive demo`. It creates a separate synthetic
+project, saves a decision, switches sessions, corrects the decision, and checks
+the next session's context. No account or model call is needed. The printed paths
+lead to a readable transcript and reproducible evidence.
+
+[Replay the demo](docs/DEMO.md) · [Try it with your own agent](docs/TRY_IT.md)
+
+## Stay in control
+
+Run `hive memory` for the guided terminal menu, or press **m** in the main
+terminal. Inspect recent memories and their sources, correct the content,
+archive an entry, undo a change, or pause incoming updates.
+
+```sh
+hive memory list
+hive memory show PROJECT_ID
+hive memory pause --reason "Review incoming knowledge"
+```
+
+Mutations show a preview first. The menu asks before saving; the CLI requires
+`--apply --preview TOKEN` with the exact preview token. Corrections reach the
+next session. Undo adds a compensating event and retains the earlier journal.
+Pausing blocks incoming session handoffs and source captures while retrieval
+and deliberate manual corrections remain available. This controls HiveMind;
+it does not pause the connected agent or revoke its provider access.
+
+[Memory controls and correction examples](docs/MEMORY.md)
+
+## Optional Gmail, Calendar and MCP sources
+
+```sh
+hive sources setup gmail --agent codex
+hive sources setup calendar --agent claude
+hive sources setup mcp --agent codex --project /path/to/project \
+  --name team-knowledge --url https://mcp.example.com/service
+```
+
+Gmail and Calendar setup guides you through the host's connection and sign-in
+flow. Generic MCP setup previews a project configuration; `--apply` installs
+the chosen entry while preserving unrelated settings. Credentials stay with the
+host. Completing local setup does not prove provider connectivity.
+
+Ask your connected agent to select one relevant message or event, explain the
+durable conclusion and prepare `hive sources capture --file selected.json`.
+Review the source and preview before applying it. HiveMind stores the selected
+conclusion and provenance as reported knowledge. It does not scan the mailbox
+or calendar automatically.
+
+[Source setup, capture template and removal](docs/SOURCES.md)
+
 ## Your vault
 
 Choose a vault with `--root PATH`, then `HIVEMIND_HOME`, then the default
@@ -51,8 +108,8 @@ Local storage is private by location and filesystem permissions, not encryption.
 Back up the whole vault, including `.history`, privately.
 
 Automatic source sync and background installation are unavailable in this public
-preview. The supported path is explicit project context and attributable session
-handoffs. Optional Calendar helpers require separate local configuration.
+preview. Use explicit project context, attributable session handoffs and selected
+source captures. Optional native Calendar helpers require separate local setup.
 
 ## Agent workflow
 
@@ -84,6 +141,12 @@ agent trusted a hook, used the offered memory, or found it helpful.
 For development, run `python3 scripts/verify.py`. It retains outcomes and source
 hashes for the existing regression suite and public setup tests. No provider
 account or personal dataset is needed.
+
+The [CI workflow](.github/workflows/ci.yml) runs source checks and fresh-wheel
+acceptance on macOS/Linux with Python 3.11/3.14, retaining failure reports too.
+Its configuration is not a claim that a hosted run has already passed. Actual
+host trust, OAuth sign-in and usefulness on real tasks need separate validation.
+See [release preparation](docs/RELEASE.md) and [changes](CHANGELOG.md).
 
 ## License
 

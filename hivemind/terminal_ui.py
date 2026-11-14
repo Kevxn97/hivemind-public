@@ -716,7 +716,7 @@ class Interface:
         if self.immersive:
             # Full screen: the hints fade after a few quiet seconds and return with any key.
             quiet=now-self.last_key;fade=7 if quiet<4 else int(7*(1-(quiet-4)/1.5)) if quiet<5.5 else -1
-            hints+='   1–5 Ansicht   q Ende'+('   ·   '+self.notice if self.notice else '')
+            hints+='   m Erinnerungen   1–5 Ansicht   q Ende'+('   ·   '+self.notice if self.notice else '')
             header=((heading,12,stats),(hints,fade) if fade>=0 else ('',0));top,left,rows,cols=start,0,bottom-start,width-1
         else:
             self.line(start,heading,self.accent)
@@ -870,7 +870,10 @@ class Interface:
         self.rule(height-5)
         self.put(height-4,3,self.notice or 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen',self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
         x=3
-        for key,label in (('1–5','Ansicht'),('/','Suche'),('n','Gedanke'),('s','Abgleich'),('r','Kalender'),('q','Ende')):
+        shortcuts = [('1–5','Ansicht'), ('m','Erinnerungen'), ('q','Ende'), ('/','Suche'), ('n','Gedanke')]
+        if not (self.root / '.hivemind.json').is_file():
+            shortcuts.extend([('s','Abgleich'), ('r','Kalender')])
+        for key,label in shortcuts:
             x=self.write(height-2,x,[(key,'accent'),(' '+label,'mute')])+3
         self.present()
 
@@ -952,6 +955,23 @@ class Interface:
     def handle(self,key):
         if self.modal:self.handle_modal(key);return True
         if key in ('q','\x03'):return False
+        if key=='m':
+            if __package__:
+                from . import memory_control
+            else:
+                import memory_control
+            curses.def_prog_mode()
+            curses.endwin()
+            try:
+                memory_control.interactive(self.root)
+            except (EOFError, KeyboardInterrupt):
+                pass
+            finally:
+                curses.reset_prog_mode()
+                self.screen.refresh()
+                self.reload()
+                self.clear()
+            return True
         if key in ('1','2','3','4','5'):
             self.switch(int(key)-1);return True
         if key in ('\t',curses.KEY_RIGHT,curses.KEY_LEFT):

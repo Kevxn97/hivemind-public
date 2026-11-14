@@ -25,6 +25,12 @@ def _parser():
     doctor.add_argument('--claude-home', type=Path)
     test = sub.add_parser('self-test', help='Prove a first memory round trip in an isolated synthetic vault')
     test.add_argument('--evidence-dir', type=Path)
+    demo = sub.add_parser('demo', help='Replay a synthetic decision, session switch and correction')
+    demo.add_argument('--directory', type=Path, help='New demo directory outside your vault (default: a temporary directory)')
+    from . import memory_control
+    memory_control.configure(sub)
+    from . import source_connections
+    source_connections.configure(sub)
     return parser
 
 
@@ -80,6 +86,9 @@ def main(argv=None):
               'Setup:    hive init [VAULT] [--project PATH] [--agent codex|claude|none]\n'
               'Connect:  hive connect codex|claude [--apply] [--agent-home PATH]\n'
               'Verify:   hive self-test; hive doctor\n'
+              'Demo:     hive demo [--directory NEW_PATH]\n'
+              'Manage:   hive memory (guided); hive memory list; hive memory show ID\n'
+              'Sources:  hive sources; hive sources setup gmail|calendar|mcp --agent codex|claude\n'
               'Context:  hive brief PATH; hive session-open PATH --agent codex\n'
               'Handoff:  hive session-draft ID --out FILE; hive session-close ID --file FILE\n'
               'Inspect:  hive browse; hive search TEXT; hive show ID; hive check\n'
@@ -95,8 +104,9 @@ def main(argv=None):
     root = resolve_vault(global_args.root)
     command = rest[0] if rest else None
     try:
-        if command in {'init', 'connect', 'disconnect', 'doctor', 'self-test'}:
+        if command in {'init', 'connect', 'disconnect', 'doctor', 'self-test', 'demo', 'memory', 'sources'}:
             args = _parser().parse_args(rest)
+            args.json = global_args.json
             if command == 'init':
                 args.json = global_args.json
                 value = _initialize(args, root)
@@ -105,12 +115,23 @@ def main(argv=None):
             elif command == 'self-test':
                 from . import selftest
                 value = selftest.run(args.evidence_dir)
+            elif command == 'demo':
+                from . import demo
+                value = demo.run(args.directory, selected_vault=root)
+            elif command == 'memory':
+                from . import memory_control
+                require_vault(root)
+                value = memory_control.execute(args, root)
+            elif command == 'sources':
+                from . import source_connections
+                require_vault(root)
+                value = source_connections.execute(args, root)
             else:
                 from . import connections
                 require_vault(root)
                 value = connections.execute(args, root)
             workflow_cli.display(value, global_args.json)
-            return 1 if command == 'self-test' and value['status'] != 'passed' else 0
+            return 1 if command in {'self-test', 'demo'} and value['status'] != 'passed' else 0
         if '--help' not in rest and '-h' not in rest and command != 'contract':
             require_vault(root)
         if command in {'sync', 'start'} or '--sync' in rest or ('--background' in rest and 'start' in rest):

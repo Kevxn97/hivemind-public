@@ -448,13 +448,27 @@ def finish(root, event):
     rebuild(root)
 
 
-def apply(root, payload, actor, reason, context):
+def apply(root, payload, actor, reason, context, respect_pause=False):
     if not actor.strip() or not reason.strip() or not context.strip():
         raise ValueError("Actor, reason and context/source reference are required")
     with locked(root):
         require_clean(root)
+        if respect_pause:
+            if __package__:
+                from . import automation
+            else:
+                import automation
+            automation.require_running(root)
         current = load_notes(root)
         audit(root, current)
+        expected_revisions = payload.get("expected_revisions", {})
+        if not isinstance(expected_revisions, dict):
+            raise ValueError("expected_revisions must map existing note IDs to revisions")
+        for ident, expected_revision in expected_revisions.items():
+            if ident not in current or not isinstance(expected_revision, str):
+                raise ValueError("Read precondition requires an existing note and revision")
+            if digest(current[ident][1]) != expected_revision:
+                raise ValueError("Revision conflict: reread and preview " + ident)
         changes = payload.get("changes", [])
         if not changes:
             raise ValueError("No changes supplied")
