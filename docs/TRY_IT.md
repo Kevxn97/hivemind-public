@@ -6,7 +6,8 @@ benchmark claiming measured improvement.
 
 1. Install from the public source and run `hive demo`. Note whether the purpose
    of the tool and its local storage are clear.
-2. Run `hive init`, select a test project and connect your chosen host. Follow its
+2. Run `python3 run.py` from the downloaded folder, or `hive setup` after installing
+   the command. Select a test project, enter a first memory, and connect your chosen host. Follow its
    hook approval step. Start a fresh session in the project and check that a
    HiveMind session ID is offered.
 3. Ask the agent to save this explicitly synthetic decision: “Use SQLite for the

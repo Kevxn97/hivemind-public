@@ -1,4 +1,4 @@
-include README.md LICENSE CHANGELOG.md pyproject.toml .gitignore RELEASE_FILES.json
+include README.md LICENSE CHANGELOG.md pyproject.toml run.py .gitignore RELEASE_FILES.json
 recursive-include .github *.yml
 recursive-include hivemind *.py *.schema.json *-global.md
 recursive-include tests *.py

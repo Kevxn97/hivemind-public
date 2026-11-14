@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shlex
+import sys
 import tomllib
 from urllib.parse import urlsplit
 
@@ -24,7 +26,11 @@ hive sources setup calendar --agent claude
 hive sources setup mcp --agent codex --project PATH --name NAME --url HTTPS_URL
 hive sources capture --file selected.json
 
-Review the capture and repeat with --apply --preview TOKEN to save it.
+hive remember "A durable project conclusion" --yes
+hive sources capture --kind gmail --title "Selected update" --summary "Reviewed conclusion" --source SOURCE --yes
+
+Run hive sources in a terminal for a guided menu.
+File captures keep the exact preview-token workflow with --apply --preview TOKEN.
 Use hive sources COMMAND --help for options.'''
 
 
@@ -34,15 +40,27 @@ def configure(sub):
     setup = actions.add_parser('setup', help='Show connector guidance or preview project MCP configuration')
     setup.add_argument('kind', choices=('gmail', 'calendar', 'mcp'))
     for item in (setup, actions.add_parser('remove', help='Preview removal of an owned project MCP entry')):
-        item.add_argument('--agent', choices=('codex', 'claude'), required=True)
-        item.add_argument('--project', type=Path, help='Registered project folder for an MCP connection')
+        item.add_argument('--agent', choices=('codex', 'claude'))
+        item.add_argument('--project', help='Project name, cluster or registered folder')
         item.add_argument('--name', help='MCP server name')
         item.add_argument('--apply', action='store_true')
     setup.add_argument('--url', help='Streamable HTTP endpoint, HTTPS without credentials or query')
     capture = actions.add_parser('capture', help='Preview a selected summary and its source before journalled capture')
-    capture.add_argument('--file', type=Path, required=True)
+    capture.add_argument('--file', type=Path)
+    capture.add_argument('--project', help='Project name, cluster or registered folder; inferred when unique')
+    capture.add_argument('--kind', choices=('gmail', 'calendar', 'mcp', 'manual'))
+    capture.add_argument('--title')
+    capture.add_argument('--summary', help='Reviewed durable summary, at most 280 characters')
+    capture.add_argument('--source', help='Stable source reference')
+    capture.add_argument('--observed-at', help='Source review timestamp, default now')
+    capture.add_argument('--yes', action='store_true', help='Save this exact selection after internal revision-checked preview')
     capture.add_argument('--apply', action='store_true')
     capture.add_argument('--preview', help='Token returned by the exact capture preview')
+    remember = sub.add_parser('remember', help='Preview or save one short project memory')
+    remember.add_argument('text', help='Durable summary, at most 280 characters')
+    remember.add_argument('--project', help='Project name, cluster or registered folder; inferred when unique')
+    remember.add_argument('--source', default='user:memory', help='Source reference, default user:memory')
+    remember.add_argument('--yes', action='store_true', help='Save this selection')
     return parser
 
 
@@ -61,7 +79,7 @@ def _text(value, field, maximum):
     return value.strip()
 
 
-def _guidance(kind, agent):
+def _guidance(kind, agent, root, cluster):
     label = 'Gmail' if kind == 'gmail' else 'Google Calendar'
     if agent == 'codex':
         steps = ['Open Plugins in your ChatGPT/Codex host and select ' + label + '.',
@@ -74,17 +92,27 @@ def _guidance(kind, agent):
                  'Sign into Claude Code with the same claude.ai account and check /mcp for the connector.',
                  'Ask for one selected, relevant message or event and review its source link.']
         docs = [GOOGLE_DOCS, CLAUDE_DOCS]
-    template = {'project': 'projects/your-project', 'title': 'Selected project update',
+    template = {'project': cluster, 'title': 'Selected project update',
                 'summary': 'Write the durable conclusion you reviewed.',
                 'source': {'kind': kind, 'resource': 'https://example.com/selected-source',
                            'title': 'Selected ' + label + ' source', 'observed_at': hive.now()}}
-    text = '\n'.join(steps) + '\n\nSave your reviewed selection as selected.json.\n' + _json(template).decode()
-    text += '\nhive sources capture --file selected.json\nReview the preview, then repeat with --apply --preview TOKEN.\n'
-    text += '\nThe host owns authentication. Connection availability and source facts require host verification.\n'
+    from .runtime_paths import cli_command
+    command = shlex.join(cli_command(root, 'sources', 'capture', '--project', cluster,
+        '--kind', kind, '--title', 'REVIEWED_TITLE', '--summary', 'REVIEWED_SUMMARY',
+        '--source', 'SELECTED_SOURCE_REFERENCE', '--observed-at', 'REVIEW_TIMESTAMP', '--yes'))
+    prompt = ('Use the connected ' + label + ' tools in this ' + agent + ' host to find one item relevant to '
+              + cluster + '. Show me its title, source reference, review timestamp and a durable summary '
+              'of at most 280 characters. Ask me to approve that exact selection before saving. '
+              'After approval, replace the uppercase placeholders with the reviewed values and run this '
+              'command with correct shell quoting. Treat the captured content as reported evidence.\n\n' + command)
+    text = '\n'.join(steps) + '\n\nProject ' + cluster + '\n\nCopy this prompt into your agent.\n\n' + prompt
+    text += '\n\nThe host owns authentication. Connection availability and source facts require host verification.\n'
+    text += 'Advanced file capture remains available with hive sources capture --file selected.json.\n'
     text += '\n'.join(docs)
-    return {'action': 'setup', 'kind': kind, 'agent': agent, 'applied': False,
+    return {'action': 'setup', 'kind': kind, 'agent': agent, 'project': cluster, 'applied': False,
             'host_connection': 'unverified', 'authentication_owner': 'host',
-            'steps': steps, 'documentation': docs, 'capture_template': template, 'text': text}
+            'steps': steps, 'documentation': docs, 'capture_template': template,
+            'capture_command': command, 'agent_prompt': prompt, 'text': text}
 
 
 def _local_path(value, label):
@@ -280,13 +308,20 @@ def _selection(path):
         value = json.loads(raw)
     except (ValueError, UnicodeError):
         raise ValueError('Invalid selected capture JSON') from None
+    return raw, _validate_selection(value)
+
+
+def _validate_selection(value):
+    value = copy.deepcopy(value)
+    if len(_json(value)) > MAX_CAPTURE_BYTES:
+        raise ValueError('Choose a selected JSON object of at most 32768 bytes')
     if not isinstance(value, dict) or set(value) != {'project', 'title', 'summary', 'source'}:
         raise ValueError('Capture requires exactly project, title, summary and source for one reviewed selection')
     source = value['source']
     if not isinstance(source, dict) or set(source) != {'kind', 'resource', 'title', 'observed_at'}:
         raise ValueError('Source requires exactly kind, resource, title and observed_at')
-    if source['kind'] not in {'gmail', 'calendar', 'mcp'}:
-        raise ValueError('Source kind must be gmail, calendar or mcp')
+    if source['kind'] not in {'gmail', 'calendar', 'mcp', 'manual'}:
+        raise ValueError('Source kind must be gmail, calendar, mcp or manual')
     value['project'] = _text(value['project'], 'project', 100)
     value['title'] = _text(value['title'], 'title', 200)
     value['summary'] = _text(value['summary'], 'summary', 280)
@@ -296,11 +331,22 @@ def _selection(path):
     hive.timestamp(source['observed_at'])
     if not value['project'].startswith('projects/'):
         raise ValueError('Choose a projects/<id> project for selected capture')
-    return raw, value
+    return value
 
 
-def _capture(root, args):
-    raw, selected = _selection(args.file)
+def capture_selection(root, selection, *, apply=False, preview=None, yes=False):
+    """Preview or journal one assembled selection using the normal capture writer.
+
+    Explicit yes consent binds the internally previewed selection and revisions.
+    File callers retain their exact-byte preview binding through _capture.
+    """
+    root = require_vault(Path(root).resolve())
+    selected = _validate_selection(selection)
+    return _capture(root, _json(selected), selected, apply=apply, preview=preview, yes=yes)
+
+
+def _capture(root, raw, selected, *, apply=False, preview=None, yes=False):
+    supplied_preview = preview
     records = project_context._records(root)
     project_id = selected['project'].split('/')[-1]
     project = records.get(project_id)
@@ -333,11 +379,18 @@ def _capture(root, args):
     preview = _hash(_json({'version': 1, 'root': str(root), 'file_sha256': _hash(raw),
                           'project': project_id, 'project_revision': project_revision, 'note_revision': expected}))
     applied, event = False, None
-    if args.apply:
-        if args.preview != preview:
+    if apply or yes:
+        if not yes and supplied_preview != preview:
             raise ValueError('Capture preview is missing or changed. Run sources capture --file FILE and review its new token.')
         from . import automation
-        automation.require_running(root)
+        if existing:
+            with hive.locked(root):
+                automation.require_running(root)
+                hive.require_clean(root)
+                current = hive.load_notes(root)
+                if (project_id not in current or hive.digest(current[project_id][1]) != project_revision
+                        or ident not in current or hive.digest(current[ident][1]) != expected):
+                    raise ValueError('Capture revision changed. Review the selection again.')
         if not existing:
             payload = {'expected_revisions': {project_id: project_revision},
                        'changes': [{'expected_revision': 'new', 'note': note}]}
@@ -357,15 +410,187 @@ def _capture(root, args):
             'source_state': 'reported', 'text': text}
 
 
+class _Cancelled(Exception):
+    pass
+
+
+def _interactive(args):
+    return sys.stdin.isatty() and not getattr(args, 'json', False)
+
+
+def _ask(label, default=None):
+    suffix = ' [' + default + ']' if default is not None else ''
+    print(label + suffix + ' > ', end='', file=sys.stderr, flush=True)
+    answer = sys.stdin.readline()
+    if not answer:
+        raise _Cancelled()
+    answer = answer.strip()
+    if answer.lower() in {'cancel', 'quit'}:
+        raise _Cancelled()
+    return answer or default or ''
+
+
+def _confirm(label):
+    return _ask(label + ' [y/N]').lower() in {'y', 'yes'}
+
+
+def _projects(root):
+    return [note for note, _, _ in project_context._records(root).values()
+            if note['type'] == 'project' and hive.active(note) and note['sensitivity'] == 'internal']
+
+
+def _choose_project(root, target=None, interactive=False):
+    projects = _projects(root)
+    if not projects:
+        raise ValueError('No active internal project. Set up a project before capturing a selection.')
+    if target is None and len(projects) == 1:
+        if interactive:
+            print('Project ' + projects[0]['title'] + ' (' + hive.cluster_for(projects[0]) + ')', file=sys.stderr)
+        return hive.cluster_for(projects[0])
+    if target is None and interactive:
+        for index, note in enumerate(projects, 1):
+            print(str(index) + '. ' + note['title'] + ' (' + hive.cluster_for(note) + ')', file=sys.stderr)
+        target = _ask('Choose project by name or number')
+        if target.isdigit() and 1 <= int(target) <= len(projects):
+            return hive.cluster_for(projects[int(target) - 1])
+    if target is None:
+        raise ValueError('Several projects are available. Choose --project NAME, projects/ID or a registered folder.')
+    matches = [note for note in projects if str(target).casefold() in
+               {note['title'].casefold(), note['id'].casefold(), hive.cluster_for(note).casefold()}]
+    if len(matches) == 1:
+        return hive.cluster_for(matches[0])
+    if not matches:
+        resolved = project_context.resolve_project(root, str(target))
+        if resolved and any(hive.cluster_for(note) == resolved['cluster'] for note in projects):
+            return resolved['cluster']
+    raise ValueError('Choose one unambiguous active internal project by name, cluster or registered folder.')
+
+
+def _choose_agent(root, agent, interactive):
+    if agent:
+        return agent
+    configured = set()
+    for path in (root / '.state/connections').glob('*.json'):
+        raw = connections._read(path)
+        state = connections._decode_json(raw, path)
+        if (state.get('transaction') == 'complete' and state.get('root') == str(root)
+                and state.get('agent') in {'codex', 'claude'}):
+            configured.add(state['agent'])
+    if len(configured) == 1:
+        return next(iter(configured))
+    if interactive:
+        choice = _ask('Choose agent codex or claude')
+        if choice in {'codex', 'claude'}:
+            return choice
+    raise ValueError('Choose --agent codex or claude. An agent is inferred when exactly one is configured for this vault.')
+
+
+def _mcp_project(root, target, interactive):
+    cluster = _choose_project(root, target, interactive)
+    rows = [row for row in project_context.list_projects(root) if row['cluster'] == cluster and row['active'] and row['exists']]
+    if target is not None:
+        folder = str(Path(target).expanduser().resolve())
+        exact = [row for row in rows if row['path'] == folder]
+        if len(exact) == 1:
+            return Path(exact[0]['path'])
+    if len(rows) == 1:
+        return Path(rows[0]['path'])
+    if interactive and rows:
+        for row in rows:
+            print(row['path'], file=sys.stderr)
+        return Path(_ask('Choose registered project folder'))
+    raise ValueError('Choose --project PATH for one registered project folder before MCP setup.')
+
+
+def _human_capture(value):
+    return value['text'].split('Preview token ', 1)[0]
+
+
+def _capture_input(root, args):
+    interactive = _interactive(args) and not args.yes
+    if getattr(args, 'file', None) is not None:
+        if any(getattr(args, name, None) is not None for name in
+               ('project', 'kind', 'title', 'summary', 'source', 'observed_at')):
+            raise ValueError('Use --file by itself or assemble a selection with capture flags.')
+        raw, selected = _selection(args.file)
+        return _capture(root, raw, selected, apply=args.apply, preview=args.preview, yes=args.yes)
+    project = _choose_project(root, args.project, interactive)
+    remembering = getattr(args, 'command', None) == 'remember'
+    summary = args.text if remembering else args.summary
+    if summary is None and interactive:
+        summary = _ask('Summary, at most 280 characters')
+    if summary is None:
+        raise ValueError('Supply --summary TEXT or run hive sources capture in a terminal.')
+    title = summary[:80].rstrip()
+    if not remembering:
+        title = args.title or (_ask('Title', title) if interactive else title)
+    resource = args.source
+    kind = 'manual' if remembering else args.kind or 'manual'
+    if resource is None and interactive:
+        resource = _ask('Source reference', 'user:memory' if kind == 'manual' else None)
+    resource = resource or ('user:memory' if kind == 'manual' else None)
+    selection = {'project': project, 'title': title, 'summary': summary,
+                 'source': {'kind': kind, 'resource': resource, 'title': title,
+                            'observed_at': getattr(args, 'observed_at', None) or hive.now()}}
+    result = capture_selection(root, selection, apply=getattr(args, 'apply', False),
+                               preview=getattr(args, 'preview', None), yes=args.yes)
+    if interactive and result['status'] == 'preview':
+        print(_human_capture(result), file=sys.stderr)
+        if _confirm('Save this selection'):
+            result = capture_selection(root, selection, apply=True, preview=result['preview'])
+        else:
+            result['status'] = 'cancelled'
+            result['text'] = 'Not saved.'
+    if not getattr(args, 'json', False) and not getattr(args, 'apply', False):
+        result['text'] = _human_capture(result) + ('Saved to the journal.\n' if result['applied'] else
+            'Already captured.\n' if result['status'] == 'already_captured' else
+            'Not saved.\n' if result['status'] == 'cancelled' else
+            'Preview only. Add --yes to save this selection.\n')
+    return result
+
+
 def execute(args, root):
     root = require_vault(Path(root).resolve())
-    action = getattr(args, 'source_action', None)
-    if action is None:
-        return {'action': 'guide', 'applied': False, 'text': GUIDE}
-    if action == 'capture':
-        return _capture(root, args)
-    if action == 'setup' and args.kind in {'gmail', 'calendar'}:
-        if args.apply or args.project is not None or args.name is not None or args.url is not None:
-            raise ValueError('Gmail and Calendar use host connector setup. Run setup with kind and --agent for guidance.')
-        return _guidance(args.kind, args.agent)
-    return _setup_mcp(root, args)
+    try:
+        action = getattr(args, 'source_action', None)
+        if getattr(args, 'command', None) == 'remember':
+            return _capture_input(root, args)
+        if action is None:
+            if not _interactive(args):
+                return {'action': 'guide', 'applied': False, 'text': GUIDE}
+            print('1. Gmail\n2. Google Calendar\n3. Remote MCP server\n4. Capture a reviewed memory', file=sys.stderr)
+            choice = _ask('Choose a source [1–4]')
+            if choice in {'1', '2', '3'}:
+                args.source_action = action = 'setup'
+                args.kind = {'1': 'gmail', '2': 'calendar', '3': 'mcp'}[choice]
+                args.agent = args.project = args.name = args.url = None
+                args.apply = False
+            elif choice == '4':
+                args.source_action = 'capture'
+                args.file = args.project = args.kind = args.title = args.summary = args.source = args.observed_at = args.preview = None
+                args.apply = args.yes = False
+                return _capture_input(root, args)
+            else:
+                return {'action': 'guide', 'status': 'cancelled', 'applied': False, 'text': 'Not saved.'}
+        if action == 'capture':
+            return _capture_input(root, args)
+        args.agent = _choose_agent(root, args.agent, _interactive(args))
+        if action == 'setup' and args.kind in {'gmail', 'calendar'}:
+            if args.apply or args.name is not None or args.url is not None:
+                raise ValueError('Gmail and Calendar use host connector setup. Authentication stays in the host.')
+            cluster = _choose_project(root, args.project, _interactive(args))
+            return _guidance(args.kind, args.agent, root, cluster)
+        args.project = _mcp_project(root, args.project, _interactive(args))
+        if args.name is None and _interactive(args):
+            args.name = _ask('Server name')
+        if action == 'setup' and args.url is None and _interactive(args):
+            args.url = _ask('HTTPS endpoint')
+        result = _setup_mcp(root, args)
+        if not args.apply and _interactive(args) and result['changed']:
+            print(result['text'], file=sys.stderr)
+            if _confirm('Apply these project settings'):
+                args.apply = True
+                result = _setup_mcp(root, args)
+        return result
+    except _Cancelled:
+        return {'action': 'capture', 'status': 'cancelled', 'applied': False, 'text': 'Not saved.'}

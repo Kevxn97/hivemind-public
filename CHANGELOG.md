@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+- Start directly from the downloaded folder with `python3 run.py`. Guided setup
+  connects a project and agent and saves the first memory.
+- Save short memories with `remember`. The source menu supports project-name
+  selection, agent inference and one confirmation after a readable preview.
+- Gmail and Calendar guidance includes a copyable agent prompt. MCP setup asks
+  for the chosen server details and previews the project configuration.
+
 ## 0.1.0a2 — 2026-11-14
 
 - Guided memory management with provenance, correction previews, archiving,

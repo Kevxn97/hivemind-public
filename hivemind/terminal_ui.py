@@ -870,7 +870,10 @@ class Interface:
         self.rule(height-5)
         self.put(height-4,3,self.notice or 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen',self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
         x=3
-        shortcuts = [('1–5','Ansicht'), ('m','Erinnerungen'), ('q','Ende'), ('/','Suche'), ('n','Gedanke')]
+        shortcuts = [('1–5','Ansicht'), ('m','Erinnerungen')]
+        if (self.root / '.hivemind.json').is_file():
+            shortcuts.append(('s','Quellen'))
+        shortcuts.extend([('q','Ende'), ('/','Suche'), ('n','Gedanke')])
         if not (self.root / '.hivemind.json').is_file():
             shortcuts.extend([('s','Abgleich'), ('r','Kalender')])
         for key,label in shortcuts:
@@ -952,6 +955,24 @@ class Interface:
         if key in (curses.KEY_BACKSPACE,'\x7f','\b'):setattr(self,field,value[:-1])
         elif isinstance(key,str) and key.isprintable() and len(value)<(160 if field=='capture_title' else 23800):setattr(self,field,value+key)
 
+    def open_menu(self, operation, pause=False):
+        curses.def_prog_mode()
+        curses.endwin()
+        try:
+            result = operation(self.root)
+            if pause:
+                print(result['text'])
+                input('Press Enter to return to HiveMind > ')
+        except (EOFError, KeyboardInterrupt):
+            pass
+        except (OSError, ValueError, RuntimeError) as error:
+            self.notice = clean(str(error))
+        finally:
+            curses.reset_prog_mode()
+            self.screen.refresh()
+            self.reload()
+            self.clear()
+
     def handle(self,key):
         if self.modal:self.handle_modal(key);return True
         if key in ('q','\x03'):return False
@@ -960,17 +981,16 @@ class Interface:
                 from . import memory_control
             else:
                 import memory_control
-            curses.def_prog_mode()
-            curses.endwin()
-            try:
-                memory_control.interactive(self.root)
-            except (EOFError, KeyboardInterrupt):
-                pass
-            finally:
-                curses.reset_prog_mode()
-                self.screen.refresh()
-                self.reload()
-                self.clear()
+            self.open_menu(memory_control.interactive)
+            return True
+        if key=='s' and (self.root / '.hivemind.json').is_file():
+            if __package__:
+                from . import source_connections
+            else:
+                sys.path.insert(0, str(BASE.parent))
+                from hivemind import source_connections
+            args = argparse.Namespace(command='sources', source_action=None, json=False)
+            self.open_menu(lambda root: source_connections.execute(args, root), pause=True)
             return True
         if key in ('1','2','3','4','5'):
             self.switch(int(key)-1);return True

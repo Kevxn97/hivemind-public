@@ -11,40 +11,55 @@ is not supported directly; Linux under WSL is a possible but unverified setup.
 
 ## Start
 
-Clone the project and install it into an isolated environment:
+Download the [source ZIP](https://github.com/Kevxn97/hivemind-public/archive/refs/heads/main.zip),
+extract it, and open a terminal in the extracted folder. Start with one command:
 
 ```sh
-git clone https://github.com/Kevxn97/hivemind-public.git
-cd hivemind-public
+python3 run.py
+```
+
+The first run asks for your project folder, Codex or Claude, and one thing to
+remember. Review the summary and confirm. The chosen agent connection has its
+own short settings preview. Codex users review the hooks with `/hooks`, then
+open a fresh session in their project and ask “What do you remember about this
+project?”
+
+Your local vault defaults to `~/.local/share/hivemind`. Use `--root PATH` to
+choose another location. Keep the downloaded application folder in place while
+using its agent hooks. Later runs open the terminal workspace. `setup` returns
+to the guided setup and can add another project.
+
+```sh
+python3 run.py setup
+python3 run.py remember "Use SQLite for the local pilot."
+python3 run.py sources
+```
+
+Memory and source dialogs show a preview and ask once before saving. A single
+project and connected agent are selected automatically. With several projects,
+choose one by name or number. Python 3.11+ is the prerequisite for this direct
+start. The application uses the standard library.
+
+## Install the `hive` command
+
+For regular use, install the same application in an isolated environment:
+
+```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install .
 source .venv/bin/activate
-.venv/bin/hive init "$HOME/.local/share/hivemind" --project /path/to/your/project
+hive setup
 ```
 
-Keep this environment active for the `hive` commands below so they use this
-installation. `deactivate` leaves the environment when you are done.
-
-The guided setup asks for a vault, first project and agent. Existing content is
-never imported or overwritten. You can also use deterministic commands:
-
-```sh
-.venv/bin/hive init "$HOME/.local/share/hivemind" --project /path/to/project --name "My Project" --agent codex --yes
-.venv/bin/hive self-test
-.venv/bin/hive connect codex
-.venv/bin/hive connect codex --apply
-.venv/bin/hive doctor
-```
-
-`connect` previews changes; `--apply` installs them. Use `claude` for Claude Code.
-Both session lifecycle hooks and a small instruction block are managed together.
-Existing unrelated instructions and hooks are preserved. Codex requires its own
-hook review via `/hooks` (or the desktop hook settings) before executing them.
-`disconnect AGENT --apply` removes the managed connection.
+The examples below use the installed `hive` command. From the downloaded source
+folder, use `python3 run.py` in place of `hive`. `hive connect codex` previews
+the managed instructions and hooks, and `--apply` installs them. Use `claude`
+for Claude Code. `disconnect AGENT --apply` removes the managed connection.
 
 ## See it work in two minutes
 
-After installation, run `.venv/bin/hive demo`. It creates a separate synthetic
+Run `python3 run.py demo` from the downloaded source, or `hive demo` after
+installation. It creates a separate synthetic
 project, saves a decision, switches sessions, corrects the decision, and checks
 the next session's context. No account or model call is needed. The printed paths
 lead to a readable transcript and reproducible evidence.
@@ -75,22 +90,30 @@ it does not pause the connected agent or revoke its provider access.
 ## Optional Gmail, Calendar and MCP sources
 
 ```sh
-hive sources setup gmail --agent codex
-hive sources setup calendar --agent claude
-hive sources setup mcp --agent codex --project /path/to/project \
-  --name team-knowledge --url https://mcp.example.com/service
+hive sources
+hive sources setup gmail
+hive sources setup calendar
+hive sources setup mcp
 ```
 
-Gmail and Calendar setup guides you through the host's connection and sign-in
-flow. Generic MCP setup previews a project configuration; `--apply` installs
-the chosen entry while preserving unrelated settings. Credentials stay with the
-host. Completing local setup does not prove provider connectivity.
+The menu guides you through Gmail, Calendar or a remote MCP server. Gmail and
+Calendar setup provides host sign-in steps and a ready-to-paste agent prompt
+for your selected project. MCP setup asks for the server name and HTTPS endpoint,
+then shows the project settings for confirmation. Credentials stay with the host.
 
-Ask your connected agent to select one relevant message or event, explain the
-durable conclusion and prepare `hive sources capture --file selected.json`.
-Review the source and preview before applying it. HiveMind stores the selected
-conclusion and provenance as reported knowledge. It does not scan the mailbox
-or calendar automatically.
+Ask the connected agent to select one relevant message or event and propose a
+short memory with its source. After approval, it can save that reviewed selection
+with a capture command. You can also enter a summary and source directly through
+the menu. Captures retain their source reference, reported evidence and journal.
+
+```sh
+hive remember "The pilot covers one team." --yes
+hive sources capture --kind gmail --summary "The pilot covers one team." \
+  --source "mail:reviewed-message" --yes
+```
+
+`--yes` saves the supplied selection in scripts. The existing file-and-token
+workflow remains available for detailed agent automation.
 
 [Source setup, capture template and removal](docs/SOURCES.md)
 

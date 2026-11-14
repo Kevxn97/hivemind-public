@@ -6,7 +6,7 @@ import shlex
 import sys
 
 from . import __version__, agent_contract, hive, launcher, onboarding, workflow_cli
-from .runtime_paths import default_vault, require_vault, resolve_vault
+from .runtime_paths import cli_command, require_vault, resolve_vault
 
 CORE_COMMANDS = {'browse', 'show', 'search', 'draft', 'apply', 'reindex', 'recover',
                  'check', 'eval', 'feedback', 'history'}
@@ -31,6 +31,8 @@ def _parser():
     memory_control.configure(sub)
     from . import source_connections
     source_connections.configure(sub)
+    from . import quickstart
+    quickstart.configure(sub)
     return parser
 
 
@@ -60,8 +62,8 @@ def _initialize(args, root):
         if agent not in {'codex', 'claude', 'none'}:
             raise ValueError('Choose codex, claude or none. The vault has been initialized; use hive connect to continue.')
     result['agent'] = agent or 'none'
-    result['next_steps'] = [shlex.join(['hive', '--root', str(root), 'self-test']),
-                            shlex.join(['hive', '--root', str(root), 'doctor'])]
+    result['next_steps'] = [shlex.join(cli_command(root, 'self-test')),
+                            shlex.join(cli_command(root, 'doctor'))]
     if agent and agent != 'none':
         from . import connections
         connection_args = argparse.Namespace(command='connect', agent=agent, agent_home=None, apply=False)
@@ -72,18 +74,16 @@ def _initialize(args, root):
             if sys.stdin.readline().strip().lower() in {'y', 'yes'}:
                 connection_args.apply = True
                 result['connection'] = connections.execute(connection_args, root)
-        result['next_steps'].insert(0, shlex.join(['hive', '--root', str(root), 'connect', agent, '--apply']))
+        result['next_steps'].insert(0, shlex.join(cli_command(root, 'connect', agent, '--apply')))
     return result
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv == ['--version']:
-        print('HiveMind ' + __version__)
-        return 0
     if argv in (['--help'], ['-h']):
         print('HiveMind — local project memory for Codex and Claude\n\n'
-              'Setup:    hive init [VAULT] [--project PATH] [--agent codex|claude|none]\n'
+              'Setup:    hive setup (guided project, agent and first memory)\n'
+              'Remember: hive remember "A project decision"\n'
               'Connect:  hive connect codex|claude [--apply] [--agent-home PATH]\n'
               'Verify:   hive self-test; hive doctor\n'
               'Demo:     hive demo [--directory NEW_PATH]\n'
@@ -101,15 +101,24 @@ def main(argv=None):
     common.add_argument('--json', action='store_true')
     common.add_argument('--plain', action='store_true')
     global_args, rest = common.parse_known_args(argv)
+    if rest == ['--version']:
+        print('HiveMind ' + __version__)
+        return 0
     root = resolve_vault(global_args.root)
     command = rest[0] if rest else None
+    if (command is None and sys.stdin.isatty() and not global_args.json and not global_args.plain
+            and not (root / onboarding.MARKER).is_file()):
+        rest, command = ['setup'], 'setup'
     try:
-        if command in {'init', 'connect', 'disconnect', 'doctor', 'self-test', 'demo', 'memory', 'sources'}:
+        if command in {'init', 'setup', 'connect', 'disconnect', 'doctor', 'self-test', 'demo', 'memory', 'sources', 'remember'}:
             args = _parser().parse_args(rest)
             args.json = global_args.json
             if command == 'init':
                 args.json = global_args.json
                 value = _initialize(args, root)
+            elif command == 'setup':
+                from . import quickstart
+                value = quickstart.execute(args, root)
             elif command == 'doctor':
                 value = diagnose(root, args.home, args.codex_home, args.claude_home)
             elif command == 'self-test':
@@ -122,7 +131,7 @@ def main(argv=None):
                 from . import memory_control
                 require_vault(root)
                 value = memory_control.execute(args, root)
-            elif command == 'sources':
+            elif command in {'sources', 'remember'}:
                 from . import source_connections
                 require_vault(root)
                 value = source_connections.execute(args, root)
