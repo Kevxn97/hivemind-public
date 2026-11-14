@@ -31,9 +31,10 @@ import unicodedata
 from zoneinfo import ZoneInfo
 
 if __package__:
-    from . import constellation
+    from . import constellation, terminal_brand
 else:
     import constellation
+    import terminal_brand
 if __package__:
     from . import hive
 else:
@@ -55,16 +56,18 @@ FRAME = 1/24
 # Netz in 24-bit colour sends only changed cells, so it can afford smoother motion.
 GLOW_FRAME = 1/60
 IDLE = 300
-# One accent, azure, on the terminal's own background; status and area colours appear only
-# where they carry meaning. Abyss to spark is the blue ramp of Netz impulses.
-# Each entry: xterm-256 colour and the basic fallback.
-PALETTE = {'accent':(75,curses.COLOR_CYAN),'shade':(32,curses.COLOR_BLUE),'soft':(248,curses.COLOR_WHITE),
-           'abyss':(24,curses.COLOR_BLUE),'deep':(25,curses.COLOR_BLUE),'tide':(33,curses.COLOR_BLUE),'azure':(75,curses.COLOR_CYAN),
-           'ice':(117,curses.COLOR_CYAN),'spark':(195,curses.COLOR_WHITE),
-           'mute':(242,curses.COLOR_WHITE),'line':(238,curses.COLOR_WHITE),'ok':(108,curses.COLOR_GREEN),
-           'due':(180,curses.COLOR_YELLOW),'error':(167,curses.COLOR_RED),'projects':(110,curses.COLOR_BLUE),
-           'work':(109,curses.COLOR_CYAN),'personal':(181,curses.COLOR_MAGENTA),'people':(182,curses.COLOR_MAGENTA),
-           'knowledge':(151,curses.COLOR_GREEN),'system':(146,curses.COLOR_BLUE)}
+# Honey gold and warm ivory, matching the horizontal H / honeycomb identity.
+# Existing network palette names carry an amber-to-ivory ramp.
+# Each entry is an xterm-256 colour and its basic terminal fallback.
+PALETTE = {'accent':(221,curses.COLOR_YELLOW),'shade':(179,curses.COLOR_YELLOW),
+           'ivory':(230,curses.COLOR_WHITE),'soft':(250,curses.COLOR_WHITE),
+           'abyss':(52,curses.COLOR_RED),'deep':(94,curses.COLOR_YELLOW),
+           'tide':(136,curses.COLOR_YELLOW),'azure':(221,curses.COLOR_YELLOW),
+           'ice':(222,curses.COLOR_YELLOW),'spark':(230,curses.COLOR_WHITE),
+           'mute':(244,curses.COLOR_WHITE),'line':(238,curses.COLOR_WHITE),'ok':(108,curses.COLOR_GREEN),
+           'due':(180,curses.COLOR_YELLOW),'error':(167,curses.COLOR_RED),'projects':(179,curses.COLOR_YELLOW),
+           'work':(144,curses.COLOR_YELLOW),'personal':(181,curses.COLOR_MAGENTA),'people':(182,curses.COLOR_MAGENTA),
+           'knowledge':(151,curses.COLOR_GREEN),'system':(246,curses.COLOR_WHITE)}
 AREAS = (('personal','Persönlich'),('people','Personen'),('work','Arbeit'),('projects','Projekte'),('knowledge','Wissen'),('system','Betrieb'))
 MARKS = {'confirmed':('●','ok'),'reported':('○','mute'),'inferred':('◌','mute'),'disputed':('◇','error')}
 TONES = {'complete':'ok','ok':'ok','active':'ok','idle':'soft','running':'accent','partial':'due','pending':'due',
@@ -74,16 +77,8 @@ STATUS = {'idle':'bereit', 'running':'läuft', 'complete':'vollständig',
           'not_run':'noch nicht gelesen', 'unavailable':'nicht verfügbar',
           'blocked':'blockiert', 'incomplete':'unvollständig', 'ok':'aktuell',
           'stale':'veraltet', 'stopped':'gestoppt', 'active':'aktiv'}
-WORDMARK = (
-    '██╗  ██╗██╗██╗   ██╗███████╗',
-    '██║  ██║██║██║   ██║██╔════╝',
-    '███████║██║██║   ██║█████╗  ',
-    '██╔══██║██║╚██╗ ██╔╝██╔══╝  ',
-    '██║  ██║██║ ╚████╔╝ ███████╗',
-    '╚═╝  ╚═╝╚═╝  ╚═══╝  ╚══════╝',
-)
-# Netz light (0–255, after a soft knee) as cold light added to the background: blue haze, azure, ice.
-LIGHT = ((0,(0,0,0)),(.25,(5,12,24)),(.5,(14,40,82)),(.75,(40,100,170)),(1,(120,190,250)))
+# Warm network light, from deep amber to pale gold.
+LIGHT = ((0,(0,0,0)),(.25,(24,12,2)),(.5,(82,43,7)),(.75,(170,108,24)),(1,(255,206,72)))
 
 
 def clean(value):
@@ -244,7 +239,7 @@ def _bg(colour):
 
 
 class Glow:
-    """Netz in 24-bit colour, sent straight to the terminal after curses: smooth grays, the blue
+    """Netz in 24-bit colour, sent straight to the terminal after curses: smooth grays, the amber
     impulse ramp and, when the background is known, the light behind the dots. Serves as the colour
     tables of constellation.Canvas.paint; only changed cells are sent, in one synchronized update."""
 
@@ -380,7 +375,7 @@ def render_plain(root, width=80, data=None):
     data=snapshot(root) if data is None else data;width=max(30,min(int(width),160))
     notes=visible_notes(data);review=[n for n in notes.values() if hive.freshness(n)=='stale' or n['evidence']!='confirmed']
     pending=sum(not item.get('processed') for item in data['inbox'])
-    lines=['HIVE / persönliches Wissen', '─'*width]
+    lines=['HIVEMIND / persönliches Wissen', '─'*width]
     if data['valid']:lines.append(f'{len(notes)} Notizen · {len(review)} zur Prüfung · {pending} Gedanken offen')
     lines.extend(['Hintergrund: '+_background_label(data),'Abgleich: '+STATUS.get(data['job'].get('status'),data['job'].get('status','unbekannt')),
                   'Kalender: '+STATUS.get(data['agenda'].get('status'),'unbekannt')+' · Stand '+_when(data['agenda'].get('exported_at'))])
@@ -426,7 +421,7 @@ class Interface:
                         curses.init_pair(index,rich if wide else basic,-1);self.tone[name]=curses.color_pair(index)
                     self.tone['accent']|=curses.A_BOLD;self.accent=self.tone['accent']
                     if wide:
-                        curses.init_pair(38,255,237);curses.init_pair(39,75,237)
+                        curses.init_pair(38,230,236);curses.init_pair(39,221,236)
                         self.tone['select']=curses.color_pair(38);self.tone['mark']=curses.color_pair(39)|curses.A_BOLD
                     if wide and curses.COLOR_PAIRS>16+len(GRAYS):
                         for index,gray in enumerate(GRAYS):curses.init_pair(16+index,gray,-1)
@@ -584,15 +579,19 @@ class Interface:
         return {'id':note['id'],'kind':'note','parts':[(mark,tone),('  '+note['title'],'')],
                 'right':right or [(hive.cluster_for(note),area if area in PALETTE else 'mute')]}
 
-    def wordmark(self,y,x):
-        """The HIVE mark in two blue tones: a solid face and its darker extrusion."""
-        for offset,line in enumerate(WORDMARK):
-            parts=[]
-            for char in line:
-                style='accent' if char=='█' else 'shade'
-                if parts and parts[-1][1]==style:parts[-1]=(parts[-1][0]+char,style)
-                else:parts.append((char,style))
-            self.write(y+offset,x,parts)
+    def wordmark(self, y, x, compact=False):
+        """Horizontal H / honeycomb mark, sized to the available vertical space."""
+        emblem = terminal_brand.COMPACT_EMBLEM if compact else terminal_brand.EMBLEM
+        for offset, line in enumerate(emblem):
+            self.put(y + offset, x, line, self.tone['accent'])
+        left = x + len(emblem[0]) + 3
+        if compact:
+            self.write(y + 1, left, [('HIVE', 'accent'), ('MIND', 'ivory')])
+            self.put(y + 2, left, 'ÜBERSICHT', self.tone['mute'])
+        else:
+            for offset, (hive_part, mind_part) in enumerate(zip(terminal_brand.HIVE, terminal_brand.MIND)):
+                self.write(y + 1 + offset, left, [(hive_part, 'accent'), (' ', ''), (mind_part, 'ivory')])
+        return y + len(emblem)
 
     def agenda(self,y,x,width,bottom,limit=6):
         """Upcoming events, today and tomorrow by name; returns the next free row."""
@@ -646,8 +645,12 @@ class Interface:
                 show_work(y+1,3,width-6)
                 self.items=rows
                 return
-            if height>=30 and width>=68:self.wordmark(y,3);self.put(y+1,36,'Wissen, das bleibt.',self.dim);self.put(y+3,36,'Lokal. Verbunden. Für dich.',self.tone['mute']);y+=7
-            else:self.line(y,'ÜBERSICHT / DEIN WISSEN. IM HINTERGRUND.',self.accent);y+=2
+            if height>=30 and width>=68:
+                y=self.wordmark(y,3)+1
+            elif bottom-start>=12:
+                y=self.wordmark(y,3,compact=True)
+            else:
+                self.line(y,'ÜBERSICHT',self.accent);y+=1
             self.write(y,3,[(str(len(notes)),'strong'),(' Notizen     ','soft'),(str(pending),'strong'),(' im Eingang     ','soft'),(str(len(review)),'strong'),(' zur Prüfung','soft')]);y+=2
             for label,tone,value,message in status:
                 self.write(y,3,[('●',tone),('  '+label.ljust(13),'soft'),(value,'')]+([('  '+message,'mute')] if message else []));y+=1
@@ -657,8 +660,8 @@ class Interface:
             if y<bottom-1:self.section(y,3,'Zur Prüfung',len(review));self.show_list(rows,y+1,bottom,empty)
             return
         split=int(width*.56);right=split+4;room=width-right-3
-        self.wordmark(start,3);self.put(start+1,36,'Wissen, das bleibt.',self.dim);self.put(start+3,36,'Lokal. Verbunden. Für dich.',self.tone['mute'])
-        y=show_work(start+8,3,split-6);self.section(y,3,'Heute und demnächst');y=self.agenda(y+1,3,split-6,bottom-6)+1
+        brand_bottom=self.wordmark(start,3)
+        y=show_work(brand_bottom+2,3,split-6);self.section(y,3,'Heute und demnächst');y=self.agenda(y+1,3,split-6,bottom-6)+1
         self.section(y,3,'Zur Prüfung',len(review));self.show_list(rows,y+1,bottom,empty,split-8)
         # Right column: how the hive is doing.
         y=start;self.section(y,right,'Betrieb');y+=1
@@ -842,7 +845,7 @@ class Interface:
         if self.glow and self.glow.front is not None and not (self.tab==2 and not self.detail and not self.modal and self.data.get('valid') and height>=17 and width>=54):self.clear()
         self.screen.erase();self.items=[]
         if height<17 or width<54:
-            self.put(1,1,'HIVE / Terminal bitte vergrößern.',self.accent)
+            self.put(1,1,'HIVEMIND / Terminal bitte vergrößern.',self.accent)
             self.put(3,1,'Mindestens 54 × 17. q schließt nur diese Ansicht.')
             self.screen.refresh();return
         if self.modal:self.draw_modal();self.screen.refresh();return
@@ -850,16 +853,19 @@ class Interface:
             self.view_network(1,height-1);self.present();return
         # Header: the mark, the background's state and the time.
         state,tone=_background_state(self.data);clock=dt.datetime.now().strftime('%d.%m.%Y  %H:%M' if width>=100 else '%H:%M')
-        self.put(1,3,'HIVE',self.accent);self.put(1,9,'Dein persönliches Wissen',self.tone['mute'])
+        self.write(1,3,[('HIVE','accent'),('MIND','ivory')])
         status=[('● ',tone),('Hintergrund '+state,'soft'),('     '+clock,'mute')]
-        self.write(1,max(40,width-3-sum(cells(text) for text,_ in status)),status)
+        status_left=max(14,width-3-sum(cells(text) for text,_ in status))
+        if status_left>=40:self.put(1,14,'Dein persönliches Wissen',self.tone['mute'])
+        self.write(1,status_left,status)
         x=3;pending=sum(not item.get('processed') for item in self.data.get('inbox',[]))
         underline=None
+        tab_gap=4 if width>=70 else 1
         for index,label in enumerate(TABS):
             active=index==self.tab;begin=x
-            x=self.write(3,x,[(str(index+1)+' ','accent' if active else 'mute'),(label,'accent' if active else 'soft')]+([(' '+str(pending),'accent')] if index==3 and pending else []))
+            x=self.write(3,x,[(str(index+1)+' ','accent' if active else 'mute'),(label,'accent' if active else 'soft')]+([(' '+str(pending),'accent')] if index==3 and pending and width>=70 else []))
             if active:underline=(begin,x-begin)
-            x+=4
+            x+=tab_gap
         self.rule(4)
         if underline:self.put(4,underline[0],'━'*underline[1],self.tone['accent'])
         bottom=height-5
@@ -868,16 +874,18 @@ class Interface:
             self.show_text([(line,'error') for error in self.data['errors'] for line in wrap(error,width-7)],6,bottom)
         else:(self.view_overview,self.view_notes,self.view_network,self.view_inbox,self.view_sources)[self.tab](6,bottom)
         self.rule(height-5)
-        self.put(height-4,3,self.notice or 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen',self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
+        compact=width<76
+        hints='D Änderungen · w Warum · a Wirkung · e Erfahrungen' if compact else 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen'
+        self.put(height-4,3,self.notice or hints,self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
         x=3
-        shortcuts = [('1–5','Ansicht'), ('m','Erinnerungen')]
+        shortcuts = [('1–5','Tabs' if compact else 'Ansicht'), ('m','Wissen' if compact else 'Erinnerungen')]
         if (self.root / '.hivemind.json').is_file():
             shortcuts.append(('s','Quellen'))
-        shortcuts.extend([('q','Ende'), ('/','Suche'), ('n','Gedanke')])
+        shortcuts.extend([('q','Ende'), ('/','Suche'), ('n','Neu' if compact else 'Gedanke')])
         if not (self.root / '.hivemind.json').is_file():
-            shortcuts.extend([('s','Abgleich'), ('r','Kalender')])
+            shortcuts.extend([('s','Sync' if compact else 'Abgleich'), ('r','Kal.' if compact else 'Kalender')])
         for key,label in shortcuts:
-            x=self.write(height-2,x,[(key,'accent'),(' '+label,'mute')])+3
+            x=self.write(height-2,x,[(key,'accent'),(' '+label,'mute')])+(1 if compact else 3)
         self.present()
 
     def reset_view(self):

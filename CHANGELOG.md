@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compact horizontal honeycomb branding with gold and ivory terminal accents.
+  Network note titles use normal terminal text; navigation adapts to small windows.
 - Start directly from the downloaded folder with `python3 run.py`. Guided setup
   connects a project and agent and saves the first memory.
 - Save short memories with `remember`. The source menu supports project-name

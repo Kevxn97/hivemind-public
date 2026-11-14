@@ -1,5 +1,7 @@
 # HiveMind
 
+<img src="assets/branding/hivemind.png" alt="HiveMind: a gold H-shaped honeycomb beside the gold and ivory wordmark" width="480">
+
 Local project memory for Codex and Claude. Preserve decisions, their sources and
 open work between sessions. Knowledge stays in a separate, readable Markdown
 vault with a journal; agents receive bounded context for the selected project.

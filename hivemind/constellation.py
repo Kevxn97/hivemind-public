@@ -40,58 +40,6 @@ LINK, CHARGE, COHESION, GRAVITY, DECAY = 30.0, -60.0, .06, .02, .6
 ALPHA_DECAY = 1-.001**(1/300)
 REPLAY, HOLD = 16.0, 3.0
 
-# Five-row bitmaps; the wordmark's ANSI-shadow face is derived from them below.
-BIG = {
-    'A': (' ##### ', '##   ##', '#######', '##   ##', '##   ##'),
-    'B': ('###### ', '##   ##', '###### ', '##   ##', '###### '),
-    'C': (' ######', '##     ', '##     ', '##     ', ' ######'),
-    'D': ('###### ', '##   ##', '##   ##', '##   ##', '###### '),
-    'E': ('#######', '##     ', '#####  ', '##     ', '#######'),
-    'F': ('#######', '##     ', '#####  ', '##     ', '##     '),
-    'G': (' ###### ', '##      ', '##   ###', '##    ##', ' ###### '),
-    'H': ('##   ##', '##   ##', '#######', '##   ##', '##   ##'),
-    'I': ('##', '##', '##', '##', '##'),
-    'J': ('     ##', '     ##', '     ##', '##   ##', ' ##### '),
-    'K': ('##   ##', '##  ## ', '#####  ', '##  ## ', '##   ##'),
-    'L': ('##     ', '##     ', '##     ', '##     ', '#######'),
-    'M': ('###    ###', '####  ####', '## #### ##', '##  ##  ##', '##      ##'),
-    'N': ('###    ##', '####   ##', '## ##  ##', '##  ## ##', '##   ####'),
-    'O': (' ###### ', '##    ##', '##    ##', '##    ##', ' ###### '),
-    'P': ('###### ', '##   ##', '###### ', '##     ', '##     '),
-    'Q': (' ###### ', '##    ##', '##    ##', '##   ###', ' #######'),
-    'R': ('###### ', '##   ##', '###### ', '##   ##', '##   ##'),
-    'S': ('#######', '##     ', '#######', '     ##', '#######'),
-    'T': ('########', '   ##   ', '   ##   ', '   ##   ', '   ##   '),
-    'U': ('##    ##', '##    ##', '##    ##', '##    ##', ' ###### '),
-    'V': ('##    ##', '##    ##', '##    ##', ' ##  ## ', '  ####  '),
-    'W': ('##     ##', '##     ##', '##  #  ##', '## ### ##', ' ### ### '),
-    'X': ('##   ##', ' ## ## ', '  ###  ', ' ## ## ', '##   ##'),
-    'Y': ('##    ##', ' ##  ## ', '  ####  ', '   ##   ', '   ##   '),
-    'Z': ('#######', '   ### ', '  ###  ', ' ###   ', '#######'),
-    '0': (' ##### ', '##   ##', '##   ##', '##   ##', ' ##### '),
-    '1': (' ##', '###', ' ##', ' ##', ' ##'),
-    '2': ('###### ', '     ##', ' ##### ', '##     ', '#######'),
-    '3': ('###### ', '     ##', ' ##### ', '     ##', '###### '),
-    '4': ('##   ##', '##   ##', '#######', '     ##', '     ##'),
-    '5': ('#######', '##     ', '###### ', '     ##', '###### '),
-    '6': (' ##### ', '##     ', '###### ', '##   ##', ' ##### '),
-    '7': ('#######', '     ##', '    ## ', '   ##  ', '   ##  '),
-    '8': (' ##### ', '##   ##', ' ##### ', '##   ##', ' ##### '),
-    '9': (' ##### ', '##   ##', ' ######', '     ##', ' ##### '),
-    ' ': ('  ', '  ', '  ', '  ', '  '),
-    '.': ('  ', '  ', '  ', '  ', '##'),
-    ',': ('  ', '  ', '  ', '##', ' #'),
-    ':': ('  ', '##', '  ', '##', '  '),
-    '-': ('     ', '     ', '#####', '     ', '     '),
-    '+': ('      ', '  ##  ', '######', '  ##  ', '      '),
-    '/': ('    ##', '   ## ', '  ##  ', ' ##   ', '##    '),
-    '(': (' ##', '## ', '## ', '## ', ' ##'),
-    ')': ('## ', ' ##', ' ##', ' ##', '## '),
-    "'": ('##', ' #', '  ', '  ', '  '),
-    '!': ('##', '##', '##', '  ', '##'),
-    '?': ('###### ', '     ##', '  #### ', '       ', '  ##   '),
-}
-MARKS = {'Ä': ('A', ' ▄▄ ▄▄  '), 'Ö': ('O', ' ▄▄  ▄▄  '), 'Ü': ('U', '▄▄    ▄▄ ')}
 
 
 def _hash(text):
@@ -192,28 +140,6 @@ def merge(rows):
         for field,value in (('relation',RELATIONS.get(row.get('relation'),row.get('relation',''))),('reason',row.get('reason',''))):
             if value and value not in entry[field]:entry[field].append(value)
     return sorted(({**entry,'relation':' · '.join(entry['relation']),'reason':' · '.join(entry['reason'])} for entry in merged.values()),key=lambda row:(row.get('title','').casefold(),row['id']))
-
-
-def monumental(text):
-    """Capitals in the wordmark's ANSI-shadow face; None when a character has no glyph."""
-    glyphs=[];marks=''
-    for char in str(text).upper():
-        base,mark=MARKS.get(char,(char,None))
-        if base not in BIG:base=unicodedata.normalize('NFD',base)[:1]
-        if base not in BIG:return None
-        glyphs.append(BIG[base]);marks+=mark or ' '*(len(BIG[base][0])+1)
-    if not glyphs:return None
-    bitmap=[''.join(rows[r]+' ' for rows in glyphs) for r in range(5)]
-    block=lambda r,c:0<=r<5 and c>=0 and bitmap[r][c]=='#'
-    lines=[]
-    for r in range(6):
-        line=''
-        for c in range(len(bitmap[0])):
-            if block(r,c):line+='█';continue
-            left,up,corner=block(r,c-1),block(r-1,c),block(r-1,c-1)
-            line+='╔' if left and up else ('║' if corner else '╗') if left else ('═' if corner else '╚') if up else '╝' if corner else ' '
-        lines.append(line)
-    return ([marks] if marks.strip() else [])+lines
 
 
 class Canvas:
@@ -580,7 +506,7 @@ class Sky:
         self._recent(notes,now)
         if not self.layout.settled():
             for _ in range(max(1,min(24,32000//len(notes)**2))):self.layout.tick()
-        # Full layouts carry monumental type and, when framed, a side panel; the tissue fills what remains.
+        # Full layouts carry a note caption and, when framed, a side panel; the tissue fills what remains.
         full=cols>=96 and rows>=22;panel=min(46,max(30,cols//4)) if full and framed else 0
         story=self._story(notes,focus,selected,items,index,matches,lapse,now)
         hud=self._hud(story,full,cols-panel-4,rows-len(header),now,moving,items,index,framed)
@@ -1001,20 +927,17 @@ class Sky:
                 'summary':note.get('summary','') if focus else '','changed':self.focus_at if focus else self.selected_at}
 
     def _hud(self, story, full, width, rows, now, moving, items, index, framed=True):
-        """Bottom-left text: a monumental name in full layouts, a compact list otherwise."""
+        """Bottom-left note caption in normal terminal text."""
         if not story:return []
         width=max(10,width);kind=story['kind']
         if full:
-            big=monumental(story['head'])
-            if big and (len(big[-1])>width or rows<30):big=None
-            span=len(big[-1]) if big else 0;reveal=int(span*_ease((now-story['changed'])/.45)) if moving else span
-            lines=[(story['caption'],8)]+([(line[:reveal],15) for line in big] if big else [(_clip(story['head'].upper(),width),15)])
+            lines=[(story['caption'],8),(_clip(story['head'],width),15)]
             if story['subtitle']:lines.append((_clip(story['subtitle'],width),12))
             lines.append((_clip(story['meta'],width),7))
             lines+=[(line,9) for line in _wrap(story['summary'],min(width,76),2)]
             if not framed and story.get('ribbon'):lines+=[('',0),(_clip(story['ribbon'],width),10 if story['kind']=='focus' else 6)]
             if len(lines)<=rows-5:return lines
-            return [(story['caption'],8),(_clip(story['head'].upper(),width),15),(_clip(story['meta'],width),7)][:max(1,rows-5)]
+            return [(story['caption'],8),(_clip(story['head'],width),15),(_clip(story['meta'],width),7)][:max(1,rows-5)]
         width+=2
         if kind=='lapse':return [(_clip(story['head']+'  ·  '+story['caption'],width),15),(_clip(story['subtitle'],width),8)][:max(1,rows)]
         lines=[(_clip(('FOKUS  ' if kind=='focus' else '◉ ')+story['head']+('  ·  '+story['subtitle'] if story['subtitle'] else ''),width),15)]
