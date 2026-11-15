@@ -291,7 +291,7 @@ class TerminalE2E(unittest.TestCase):
             screen=session.screen_text()
             self.assertIn('v0.1.0a2 · '+head+' · local changes',screen,
                           f'narrow regular/immersive label missing for tab {tab}')
-            (OUT/f'git-version-54x17-tab-{tab}.screen.txt').write_text(screen)
+            (self.output/f'git-version-54x17-tab-{tab}.screen.txt').write_text(screen, encoding='utf-8')
         session.send('q');self.assertEqual(session.wait(),0)
 
     def test_real_pty_search_detail_sources_network_resize_and_quit(self):
