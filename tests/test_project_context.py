@@ -120,21 +120,21 @@ class ProjectContextTest(unittest.TestCase):
                 self.assertEqual(result['word_count'], len(result['text'].split()))
                 self.assertTrue(result['selected'])
                 self.assertIn('synthetic://project', result['text'])
-                self.assertIn('kein Live-Stand', result['text'])
+                self.assertIn('not live status', result['text'])
 
     def test_unknown_task_keeps_only_baseline_without_inventing_relevance(self):
         self.put(note(), note('decision', type='decision', title='Architecture', body='Use Markdown.'))
         result = context.task_brief(self.root, 'projects/demo', task='Was weißt du über Quantenwombat?', budget=400)
         self.assertEqual([n['id'] for n in result['selected']], ['demo'])
         self.assertFalse(result['task_match'])
-        self.assertIn('Keine passenden Aufgabenbelege', result['text'])
+        self.assertIn('No matching task evidence', result['text'])
 
     def test_stale_disputed_evidence_and_scope_remain_visible(self):
         self.put(note(evidence='disputed', stale_after='2000-01-01T00:00:00Z',
                       verified=[{'by': 'test', 'at': '2000-01-01T00:00:00Z', 'scope': 'Only the deployment snapshot'}]))
         result = context.task_brief(self.root, 'projects/demo', budget=250)
-        self.assertIn('umstritten', result['text'])
-        self.assertIn('Prüftermin überschritten', result['text'])
+        self.assertIn('disputed', result['text'])
+        self.assertIn('Review overdue', result['text'])
         self.assertIn('Only the deployment snapshot', result['text'])
         self.assertEqual(result['selected'][0]['evidence'], 'disputed')
 
@@ -158,15 +158,15 @@ class ProjectContextTest(unittest.TestCase):
         self.assertIn('Zebramuster-Prüfung', result['text'])
         self.assertIn('Verhindert doppelte Quittungen', result['text'])
         self.assertIn('Checkpoint-Abnahme ausführen', result['text'])
-        self.assertIn('vorgeschlagen', result['text'])
+        self.assertIn('proposed', result['text'])
         self.assertNotIn('<!--', result['text'])
 
     def test_small_budget_preserves_handoff_evidence_and_its_actual_source(self):
         self.put(self.handoff_note(decisions=[], open_questions=[], next_steps=[]))
         result = context.task_brief(self.root, 'projects/demo', task='Zeroflux', budget=120)
         self.assertLessEqual(result['word_count'], 120)
-        self.assertIn('Aktuelle Übergabe: berichtet', result['text'])
-        self.assertIn('Quelle der Übergabe: synthetic://recent-report', result['text'])
+        self.assertIn('Current handoff: reported', result['text'])
+        self.assertIn('Handoff source: synthetic://recent-report', result['text'])
         self.assertIn('Zeroflux', result['text'])
         self.assertEqual(result['selected'][0]['handoff_evidence']['evidence'], 'reported')
         self.assertNotIn('synthetic://old', result['text'])

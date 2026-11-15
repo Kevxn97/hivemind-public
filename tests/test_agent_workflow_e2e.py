@@ -201,10 +201,10 @@ class AgentWorkflowE2E(unittest.TestCase):
                                 stdin=json.dumps({'cwd': str(self.repo)}))
             context = hook['hookSpecificOutput']['additionalContext']
             self.assertIn('Zebramuster', context)
-            self.assertIn('HiveMind-Sitzung:', context)
+            self.assertIn('HiveMind session:', context)
             self.assertIn('session-context', context)
         codex = self.run_cli('integrations/codex_session_start.py', [], stdin=json.dumps({'cwd': str(self.repo)}))
-        self.assertIn('HiveMind-Sitzung:', codex['hookSpecificOutput']['additionalContext'])
+        self.assertIn('HiveMind session:', codex['hookSpecificOutput']['additionalContext'])
         self.assertIn('Zebramuster', codex['hookSpecificOutput']['additionalContext'])
         terminal = subprocess.run([sys.executable, str(BASE / 'terminal_ui.py'), '--root', str(self.root), '--plain'],
                                   capture_output=True, text=True, timeout=20)
@@ -228,7 +228,7 @@ class AgentWorkflowE2E(unittest.TestCase):
         p['step_updates'] = [{'id': original['id'], 'state': 'done', 'reason': 'Legacy task actually finished'}]
         self.close(b, p)
         brief = self.cli('brief', str(self.repo), '--task', 'LegacyZebra', '--budget', '500')
-        self.assertNotIn('Nächster Schritt (vereinbart): LegacyZebra', brief['text'])
+        self.assertNotIn('Next step (agreed): LegacyZebra', brief['text'])
         self.assertEqual(self.read()['note']['work_items'][0]['state'], 'done')
 
     def test_canonical_apply_rejects_malformed_handoff_and_field_sources(self):
@@ -256,7 +256,7 @@ class AgentWorkflowE2E(unittest.TestCase):
         c = self.open('agent-c')
         decision_line = next(line for line in c['context']['text'].splitlines() if 'OriginalAlpha' in line)
         self.assertIn(p['source']['id'], decision_line)
-        self.assertIn('berichtet', decision_line)
+        self.assertIn('reported', decision_line)
         self.assertEqual(c['workflow']['project']['field_sources']['decisions']['evidence'], 'reported')
 
     def test_noop_step_patch_in_a_fresh_session_adds_no_activity(self):

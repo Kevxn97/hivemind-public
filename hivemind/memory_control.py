@@ -80,10 +80,10 @@ def _safe(value):
 def _show(records, events, ident):
     note, text, _ = _record(records, ident)
     history = _history(events, ident)
-    lines = [note['title'] + ' · ' + ident, 'Revision ' + hive.digest(text), note['summary'], '', note['body'], '', 'Quellen']
+    lines = [note['title'] + ' · ' + ident, 'Revision ' + hive.digest(text), note['summary'], '', note['body'], '', 'Sources']
     for source in note['sources']:
         lines.append('  ' + source['id'] + ' · ' + source['title'] + ' · ' + source['resource'])
-    lines += ['', 'Verlauf']
+    lines += ['', 'History']
     for event in reversed(history):
         lines.append('  ' + event['id'] + ' · ' + event['actor'] + ' · ' + event['reason'] + ' · ' + event['context'])
     return {'note': note, 'revision': hive.digest(text), 'history': history, 'text': _safe('\n'.join(lines))}
@@ -104,12 +104,12 @@ def _list(records, events, args):
     rows.sort(key=lambda row: row['event'], reverse=True)
     total = len(rows)
     rows = rows[:args.limit]
-    lines = ['Erinnerungen · zuletzt geändert zuerst']
+    lines = ['Memories · most recently changed first']
     for row in rows:
-        lines += [row['id'] + ' · ' + row['title'] + (' · archiviert' if row['archived'] else '') + (' · veraltet' if row['status'] == 'deprecated' else ''),
+        lines += [row['id'] + ' · ' + row['title'] + (' · archived' if row['archived'] else '') + (' · deprecated' if row['status'] == 'deprecated' else ''),
                   '  ' + row['summary'], '  ' + row['changed_at'] + ' · ' + row['actor'],
-                  '  Quellen ' + ', '.join(s['resource'] for s in row['sources'])]
-    lines += ['', f'{len(rows)} von {total} Erinnerungen.', 'Details mit hive memory show ID.']
+                  '  Sources ' + ', '.join(s['resource'] for s in row['sources'])]
+    lines += ['', f'{len(rows)} of {total} memories.', 'Details: hive memory show ID.']
     return {'memories': rows, 'total': total, 'text': _safe('\n'.join(lines))}
 
 
@@ -192,15 +192,15 @@ def _mutation(root, records, events, args):
     result = {'status': 'preview', 'action': command, 'preview': token, 'cleared': cleared,
               'changes': [{'id': c['note']['id'], 'expected_revision': c['expected_revision'],
                            'note': c['note']} for c in changes]}
-    lines = ['Vorschau · ' + command]
+    lines = ['Preview · ' + command]
     if state is not None:
-        lines.append('Eingehende Verarbeitung wird ' + ('pausiert.' if command == 'pause' else 'fortgesetzt.'))
+        lines.append('Incoming processing will be ' + ('paused.' if command == 'pause' else 'resumed.'))
     for change in changes:
         lines += [change['note']['id'] + ' · ' + change['note']['title'], change['note']['summary'], change['note']['body']]
     if cleared:
-        lines.append('Entfernte strukturierte Angaben und Prüfungen ' + ', '.join(cleared) + '. Der frühere Stand bleibt im Verlauf.')
+        lines.append('Removed structured fields and checks ' + ', '.join(cleared) + '. The previous state remains in history.')
     if not args.apply:
-        lines += ['', 'Übernehmen mit denselben Argumenten und --apply --preview ' + token]
+        lines += ['', 'Apply with the same arguments and --apply --preview ' + token]
         return {**result, 'text': _safe('\n'.join(lines))}
     if args.preview != token:
         raise AgentError('REVISION_CONFLICT', 'A matching prior --preview token is required. Content or state may have changed; preview again.')
@@ -210,7 +210,7 @@ def _mutation(root, records, events, args):
     else:
         context = args.source if command == 'edit' else 'hivemind-memory:' + command + ':' + getattr(args, 'event', args.id if hasattr(args, 'id') else '')
         result.update(hive.apply(root, {'changes': changes}, args.actor, args.reason, context))
-    result.update(status='applied', text=_safe('\n'.join(lines) + '\nGespeichert.'))
+    result.update(status='applied', text=_safe('\n'.join(lines) + '\nSaved.'))
     return result
 
 
@@ -221,7 +221,7 @@ def execute(args, root):
         return interactive(root)
     if command == 'status':
         state = automation.status(root)
-        return {**state, 'text': 'Eingehende Verarbeitung ' + ('pausiert.' if state['paused'] else 'aktiv.')}
+        return {**state, 'text': 'Incoming processing ' + ('paused.' if state['paused'] else 'active.')}
     records, events = _snapshot(root)
     if command in {None, 'list'}:
         if command is None:
@@ -236,38 +236,38 @@ def interactive(root):
     """A small terminal menu using the same revision-bound command operations."""
     parser = argparse.ArgumentParser(prog='hive')
     configure(parser.add_subparsers(dest='command', required=True))
-    print('HiveMind · Erinnerungen verwalten')
+    print('HiveMind · Manage memories')
     while True:
-        print('\n1 Erinnerungen  2 Anzeigen  3 Korrigieren  4 Archivieren  5 Rückgängig\n6 Pause  7 Fortsetzen  8 Status  q Zurück')
-        choice = input('Auswahl > ').strip().lower()
+        print('\n1 Memories  2 Show  3 Correct  4 Archive  5 Undo\n6 Pause  7 Resume  8 Status  q Back')
+        choice = input('Choice > ').strip().lower()
         if choice in {'q', ''}:
-            return {'status': 'closed', 'text': 'Erinnerungsverwaltung geschlossen.'}
+            return {'status': 'closed', 'text': 'Memory management closed.'}
         commands = {'1': 'list', '2': 'show', '3': 'edit', '4': 'archive', '5': 'undo', '6': 'pause', '7': 'resume', '8': 'status'}
         if choice not in commands:
             continue
         command = commands[choice]
         arguments = ['memory', command]
         if command in {'show', 'edit', 'archive'}:
-            arguments.append(input('Erinnerungs-ID > ').strip())
+            arguments.append(input('Memory ID > ').strip())
         if command == 'undo':
-            arguments.append(input('Ereignis-ID aus dem Verlauf > ').strip())
+            arguments.append(input('History event ID > ').strip())
         if command == 'edit':
-            summary = input('Korrigierte Zusammenfassung > ')
-            print('Vollständiger korrigierter Text, Abschluss mit einer einzelnen Zeile .')
+            summary = input('Corrected summary > ')
+            print('Full corrected text; finish with a single . on its own line.')
             body = []
             while True:
                 line = input()
                 if line == '.':
                     break
                 body.append(line)
-            arguments += ['--summary', summary, '--body', '\n'.join(body), '--source', input('Quelle > ').strip()]
+            arguments += ['--summary', summary, '--body', '\n'.join(body), '--source', input('Source > ').strip()]
         if command in {'edit', 'archive', 'undo', 'pause', 'resume'}:
-            arguments += ['--reason', input('Begründung > ').strip()]
+            arguments += ['--reason', input('Reason > ').strip()]
         try:
             args = parser.parse_args(arguments)
             result = execute(args, root)
             print(result['text'])
-            if result.get('status') == 'preview' and input('Übernehmen? [ja/N] > ').strip().lower() == 'ja':
+            if result.get('status') == 'preview' and input('Apply? [y/N] > ').strip().lower() in {'y', 'yes', 'ja'}:
                 args.apply = True
                 args.preview = result['preview']
                 print(execute(args, root)['text'])

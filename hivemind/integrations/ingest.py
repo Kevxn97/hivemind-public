@@ -141,7 +141,7 @@ def _selected(root):
     if len(paths)>500:raise ValueError('INBOX exceeds 500 entries; curate existing inputs first')
     for path in paths:
         if path.suffix.lower() in ('.md','.txt') and path.name!='README.md':
-            result.append({'id':'inbox:'+path.name,'path':str(path),'title':path.stem,'inbox':True,'reason':'Bewusst abgelegter Gedanke'})
+            result.append({'id':'inbox:'+path.name,'path':str(path),'title':path.stem,'inbox':True,'reason':'Deliberately captured thought'})
     return result
 
 def _read(root,source):
@@ -194,7 +194,7 @@ def capture(root,text,title=''):
         if len(list(folder.iterdir()))>=500:raise ValueError('INBOX is full; curate existing captures first')
         stamp=datetime.now(timezone.utc);name=stamp.strftime('%Y%m%dT%H%M%S%fZ')+'-'+uuid.uuid4().hex[:8]+'.md';path=folder/name
         with path.open('x',encoding='utf-8') as out:os.chmod(path,0o600);out.write(content)
-        return {'id':'inbox:'+name,'path':str(path),'title':title or 'Neuer Gedanke','created_at':stamp.isoformat()}
+        return {'id':'inbox:'+name,'path':str(path),'title':title or 'New thought','created_at':stamp.isoformat()}
 
 def inbox(root):
     root=Path(root).resolve()
@@ -420,7 +420,7 @@ def source_status(root):
             status='pending' if source.get('changed') else ('complete' if checkpoint else 'not_run')
             if source.get('status')=='error':status='unavailable'
             elif attempt.get('status') and attempt['status']!='complete':status=attempt['status']
-            rows.append({'id':ident,'title':source.get('title',ident),'status':status,'last_complete_at':checkpoint.get('completed_at'),'attempted_at':attempt.get('attempted_at'),'detail':source.get('error') or attempt.get('detail') or source.get('reason','Noch nicht synchronisiert'),'counts':checkpoint.get('counts')})
+            rows.append({'id':ident,'title':source.get('title',ident),'status':status,'last_complete_at':checkpoint.get('completed_at'),'attempted_at':attempt.get('attempted_at'),'detail':source.get('error') or attempt.get('detail') or source.get('reason','Not synced yet'),'counts':checkpoint.get('counts')})
         return {'sources':rows,'last_run':state.get('last_run'),'active_run':state.get('active_run')}
 
 def main():

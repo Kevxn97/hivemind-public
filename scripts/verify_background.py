@@ -74,7 +74,7 @@ class BackgroundE2E(unittest.TestCase):
   self.tick('2026-10-21T08:59:00+02:00');self.assertEqual(len(self.starts()),1);self.tick('2026-10-21T09:00:00+02:00');self.assertEqual(len(self.starts()),2)
  def test_dark_wake_defers_daily_run_without_spending_the_day(self):
   # 24./25.10.2026: daily runs began in 15-second maintenance wakes and died when the Mac slept again.
-  state=self.tick('2026-10-20T09:28:00+02:00',asleep=True);self.assertEqual(self.starts(),[]);self.assertIn('Wartung',state['message'])
+  state=self.tick('2026-10-20T09:28:00+02:00',asleep=True);self.assertEqual(self.starts(),[]);self.assertIn('maintenance',state['message'])
   self.tick('2026-10-20T10:40:00+02:00');self.assertEqual(len(self.starts()),1)
  def test_failure_no_blind_retry_and_new_input_backoff(self):
   self.source.write_text('Changed.');self.tick();self.tick('2026-10-20T08:02:00+02:00');self.tick('2026-10-20T08:03:00+02:00',{'status':'partial','job_id':'1'});self.tick('2026-10-20T08:59:00+02:00');self.assertEqual(len(self.starts()),1)

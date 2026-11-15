@@ -30,12 +30,12 @@ RELATIONS = {"about", "related", "depends_on", "supersedes", "contradicts"}
 ID = re.compile(r"^[a-z][a-z0-9-]{1,79}$")
 CLUSTER = re.compile(r"^(personal|knowledge|system|(?:work|projects|people)/[a-z][a-z0-9-]{1,79})$")
 AREAS = {
-    "personal": "Persönliches · Person und Zusammenarbeit",
-    "people": "Personen · Beziehungen und Kontext",
-    "work": "Arbeit · Rollen und fachlicher Kontext",
-    "projects": "Projekte · Je Vorhaben ein eigener Kontext",
-    "knowledge": "Übergreifendes Wissen und Erfahrungen",
-    "system": "Betrieb und Werkzeuge",
+    "personal": "Personal · individual context and collaboration",
+    "people": "People · relationships and context",
+    "work": "Work · roles and professional context",
+    "projects": "Projects · a separate context for each project",
+    "knowledge": "Shared knowledge and lessons",
+    "system": "Operations and tools",
 }
 
 
@@ -297,15 +297,15 @@ def freshness(note):
 def render_indexes(root, notes):
     metadata = {i: n for i, (n, _, _) in notes.items()}
     routes = catalog_view(metadata)["clusters"]
-    top = ['---', 'okf_version: "0.2"', '---', '', '# HiveMind · Themen', '', 'Zuerst den passenden Bereich öffnen, dann wenige Notizen und relevante Querverbindungen lesen.', 'Historische Berichte bleiben prüfbedürftig; ihre Einordnung bestätigt keinen aktuellen Sachstand.', '']
+    top = ['---', 'okf_version: "0.2"', '---', '', '# HiveMind · Topics', '', 'Open the relevant area first, then read a few notes and relevant cross-connections.', 'Historical reports still need review; their classification does not establish the current state.', '']
     for route in routes:
-        top.append(f'- [{route["title"]}](./clusters/{route["cluster"]}/index.md) — {route["notes"]} Notizen')
-    top.extend(['', '[Historische Projekte und Notizen](./archive/index.md) · Aus dem aktuellen Einstieg genommen, weiterhin gezielt abrufbar.'])
-    top.extend(['', '## Alternative: nach Notizart', '', 'Diese Kataloge sind eine zweite Sicht auf dieselben Notizen.', ''])
+        top.append(f'- [{route["title"]}](./clusters/{route["cluster"]}/index.md) — {route["notes"]} notes')
+    top.extend(['', '[Historical projects and notes](./archive/index.md) · Outside the current entry point, still available for targeted retrieval.'])
+    top.extend(['', '## Alternative: by note type', '', 'These catalogs provide another view of the same notes.', ''])
     for kind in sorted(KINDS):
         entries = [n for n, _, _ in notes.values() if n["type"] == kind and not n.get("archived", False)]
         if not entries:
-            atomic(root / "wiki" / kind / "index.md", '# ' + kind + '\n\n[Archiv](../archive/index.md)\n')
+            atomic(root / "wiki" / kind / "index.md", '# ' + kind + '\n\n[Archive](../archive/index.md)\n')
             continue
         top.append(f'- [{kind}](./{kind}/index.md) — {len(entries)} notes')
         lines = ["# " + kind, "", "[All routes](../index.md)", ""]
@@ -314,7 +314,7 @@ def render_indexes(root, notes):
         atomic(root / "wiki" / kind / "index.md", "\n".join(lines) + "\n")
     atomic(root / "wiki" / "index.md", "\n".join(top) + "\n")
     archived = {i: n for i, n in metadata.items() if n.get("archived", False)}
-    archive_lines = ['# Historisches Archiv', '', '[Aktueller Einstieg](../index.md)', '', 'Diese Einordnung betrifft den aktuellen Fokus; sie behauptet keine Projektbeendigung. Abruf mit `show ID`, Suche und Navigation mit `--history`.', '']
+    archive_lines = ['# Historical archive', '', '[Current entry point](../index.md)', '', 'This classification reflects the current focus; it does not claim a project has ended. Retrieve with `show ID`, search and browse with `--history`.', '']
     for home in sorted({cluster_for(n) for n in archived.values()}):
         archive_lines.append(f'- [{cluster_title(home, metadata)}](../clusters/{home}/index.md)')
     atomic(root / 'wiki/archive/index.md', '\n'.join(archive_lines) + '\n')
@@ -326,24 +326,24 @@ def render_indexes(root, notes):
         expected.add(path)
         archived_scope = not any(in_cluster(n, scope) and not n.get("archived", False) for n in metadata.values())
         view = catalog_view(metadata, scope, limit=50, include_archived=archived_scope)
-        lines = ["# " + cluster_title(scope, metadata), "", f'[Alle Bereiche]({os.path.relpath(root / "wiki/index.md", path.parent)})', '']
+        lines = ["# " + cluster_title(scope, metadata), "", f'[All areas]({os.path.relpath(root / "wiki/index.md", path.parent)})', '']
         if archived_scope:
-            lines.extend(['Historischer Kontext außerhalb des aktuellen Einstiegs.', ''])
+            lines.extend(['Historical context outside the current entry point.', ''])
         if "clusters" in view:
             for route in view["clusters"]:
                 link = os.path.relpath(root / "wiki/clusters" / route["cluster"] / "index.md", path.parent)
-                lines.append(f'- [{route["title"]}]({link}) — {route["notes"]} Notizen')
+                lines.append(f'- [{route["title"]}]({link}) — {route["notes"]} notes')
             if view["total_clusters"] > 50:
-                lines.extend(['', 'Weitere Bereiche vorhanden. Gezielt mit `search --cluster ' + scope + '` suchen.'])
+                lines.extend(['', 'More areas are available. Search specifically with `search --cluster ' + scope + '`.'])
         else:
-            intro = 'Kontext, Entscheidungen und Erfahrungen zu diesem Projekt.' if scope.startswith('projects/') else 'Notizen dieses Themenbereichs. Andere Bereiche gezielt über Querverbindungen nachladen.'
+            intro = 'Context, decisions, and lessons for this project.' if scope.startswith('projects/') else 'Notes in this area. Follow relevant cross-connections to load other areas.'
             lines.extend([intro, ''])
             for n in view["notes"]:
                 link = os.path.relpath(path_for(root, metadata[n["id"]]), path.parent)
                 lines.append(f'- [{n["title"]}]({link}) — {n["summary"]} [{n["type"]}; {n["status"]}; {n["evidence"]}; {n["freshness"]}]')
             if view["total_notes"] > 50:
-                lines.extend(['', 'Weitere Notizen vorhanden. Gezielt mit `search --cluster ' + scope + '` suchen.'])
-            lines.extend(['', '## Querverbindungen', ''])
+                lines.extend(['', 'More notes are available. Search specifically with `search --cluster ' + scope + '`.'])
+            lines.extend(['', '## Cross-connections', ''])
             for edge in view["cross_connections"]:
                 origin, target = metadata[edge["origin"]], metadata[edge["target"]]
                 a = os.path.relpath(path_for(root, origin), path.parent)
@@ -351,9 +351,9 @@ def render_indexes(root, notes):
                 explanation = ' — ' + edge["reason"] if edge["reason"] else ''
                 lines.append(f'- [{origin["title"]}]({a}) → {edge["relation"]} → [{target["title"]}]({b}){explanation}')
             if not view["cross_connections"]:
-                lines.append('Noch keine gezielten Verbindungen zu anderen Bereichen.')
+                lines.append('No specific connections to other areas yet.')
             if view["total_cross_connections"] > 50:
-                lines.append('Weitere Verbindungen vorhanden; gezielt über die betreffende Notiz nachladen.')
+                lines.append('More connections are available; load them through the relevant note.')
         atomic(path, "\n".join(lines) + "\n")
     # Only generated cluster routes are removed when the last member changes home.
     for obsolete in (root / "wiki/clusters").rglob("index.md"):
@@ -662,9 +662,11 @@ def browse(root, cluster=None, limit=10, include_archived=False):
 # Project brief: bounded session context derived from canonical notes, without the search cache.
 ENTRY = re.compile(r"`(/[^`\s]+)`")
 FOOTNOTE = re.compile(r"^\[\^[^\]]+\]:.*$|\[\^[^\]]+\]", re.M)
-LABELS = {"preference": "Arbeitsweise", "person": "Person", "lesson": "Erfahrung", "decision": "Entscheidung", "project": "Projekt", "work": "Arbeitskontext", "system": "Betrieb"}
+LABELS = {"preference": "Preference", "person": "Person", "lesson": "Lesson", "decision": "Decision", "project": "Project", "work": "Work context", "system": "System"}
+EVIDENCE_LABELS = {"confirmed": "confirmed", "reported": "reported", "inferred": "inferred", "disputed": "disputed"}
+# Retain the previous constant for integrations that imported it directly.
 GERMAN_EVIDENCE = {"confirmed": "bestätigt", "reported": "berichtet", "inferred": "abgeleitet", "disputed": "umstritten"}
-STRONG = {"contradicts": " (widerspricht)", "supersedes": " (ersetzt)", "depends_on": " (Abhängigkeit)"}
+STRONG = {"contradicts": " (contradicts)", "supersedes": " (supersedes)", "depends_on": " (dependency)"}
 
 
 def active(note):
@@ -749,26 +751,26 @@ def brief(root, target=".", words=170, *, task=None, budget=None):
             raise ValueError("Unknown or empty cluster: " + scope)
         return None
     lead, ids = members[0], {n["id"] for n in members}
-    assurance = [GERMAN_EVIDENCE[lead["evidence"]]]
+    assurance = [EVIDENCE_LABELS[lead["evidence"]]]
     accepted = lead.get("acceptance")
     if isinstance(accepted, dict) and accepted.get("at"):
-        original = GERMAN_EVIDENCE.get(accepted.get("original_evidence"))
-        assurance.append("abgenommen am " + german_day(accepted["at"]) + (", ursprünglich " + original if original else ""))
+        original = EVIDENCE_LABELS.get(accepted.get("original_evidence"))
+        assurance.append("accepted on " + german_day(accepted["at"]) + (", originally " + original if original else ""))
     if lead.get("verified"):
         last = max(lead["verified"], key=lambda entry: timestamp(entry["at"]))
-        assurance.append("zuletzt geprüft " + german_day(last["at"]) + (" (" + last["scope"].rstrip(".") + ")" if last.get("scope") else ""))
+        assurance.append("last checked " + german_day(last["at"]) + (" (" + last["scope"].rstrip(".") + ")" if last.get("scope") else ""))
     where = f"`{folder}` → `{scope}`" if folder else f"`{scope}`"
-    lines = ["# Projektkontext · " + lead["title"], "",
-             f"{where} · bearbeitet {german_day(lead['generated']['at'])} · Prüfung fällig {german_day(lead['stale_after'])}",
-             "Evidenz: " + "; ".join(assurance) + "."]
+    lines = ["# Project context · " + lead["title"], "",
+             f"{where} · edited {german_day(lead['generated']['at'])} · review due {german_day(lead['stale_after'])}",
+             "Evidence: " + "; ".join(assurance) + "."]
     if freshness(lead) == "stale":
-        lines.append("Prüftermin überschritten: Gegenwartsaussagen erst nach aktueller Prüfung verwenden.")
+        lines.append("Review overdue: verify current-state claims before use.")
     text, omitted = excerpt(lead["body"], words)
-    lines += ["", "## Stand", "", lead["summary"], "", text]
+    lines += ["", "## Status", "", lead["summary"], "", text]
     if omitted:
-        lines += ["", f"Weitere Abschnitte (`hive note {lead['id']}`): " + " · ".join(omitted) + "."]
+        lines += ["", f"More sections (`hive note {lead['id']}`): " + " · ".join(omitted) + "."]
     if members[1:]:
-        lines += ["", "## Im selben Projekt", ""] + [f"- {note_label(n)} — {n['summary']}" for n in members[1:]]
+        lines += ["", "## In the same project", ""] + [f"- {note_label(n)} — {n['summary']}" for n in members[1:]]
     edges, hidden = [], set()
     for n in notes.values():
         for edge in n["links"]:
@@ -789,15 +791,15 @@ def brief(root, target=".", words=170, *, task=None, budget=None):
             seen.add(other["id"])
             rows.append(f"- {note_label(other)}{STRONG.get(relation, '')} — {reason or other['summary']}")
     if rows or hidden:
-        lines += ["", "## Für die Arbeit hier", ""] + rows[:8]
+        lines += ["", "## For this work", ""] + rows[:8]
         if len(rows) > 8:
-            lines.append(f"- {len(rows) - 8} weitere über `hive.py browse {scope}`")
+            lines.append(f"- {len(rows) - 8} more via `hive.py browse {scope}`")
         if hidden:
-            lines.append(f"- {len(hidden)} persönliche Verbindung(en) ausgelassen.")
-    lines += ["", "## Umgang", "",
-              "„Bestätigt“ gilt nur im genannten Prüfumfang; datierte Aussagen sind Beobachtungen, kein Live-Stand.",
-              "Mehr: `" + shlex.join([sys.executable, str(ROOT / 'hive.py'), '--root', str(root), 'show', 'ID']) +
-              "` · `" + shlex.join([sys.executable, str(ROOT / 'hive.py'), '--root', str(root), 'search', 'Thema', '--cluster', scope]) + "`."]
+            lines.append(f"- {len(hidden)} personal connection(s) omitted.")
+    lines += ["", "## How to use this context", "",
+              "“Confirmed” applies only within the stated scope; dated statements are observations, not live status.",
+              "More: `" + shlex.join([sys.executable, str(ROOT / 'hive.py'), '--root', str(root), 'show', 'ID']) +
+              "` · `" + shlex.join([sys.executable, str(ROOT / 'hive.py'), '--root', str(root), 'search', 'topic', '--cluster', scope]) + "`."]
     return {"cluster": scope, "folder": str(folder) if folder else None, "text": "\n".join(lines) + "\n"}
 
 
@@ -832,12 +834,12 @@ def session_hook(root, agent='claude', budget=1200):
                                         runtime_source=event.get('source') if event.get('session_id') is not None else None)
         # Keep the receipt and continuation instructions in the host's preview
         # even when long additionalContext is moved to a separate file.
-        text = ("HiveMind-Sitzung: " + offered["session_id"] +
-                 "\nKontext angeboten; Nutzung nicht als geprüft angenommen. "
-                 "Diese Sitzungs-ID weiterverwenden. Sobald die Aufgabe feststeht: session-context SESSION_ID --task TASK. "
-                 "Dauerhafte Erkenntnisse über session-draft / session-close speichern; "
-                 "step_updates ändern nur genannte IDs; ausgelassene Schritte bleiben erhalten. "
-                 "ohne neue Erkenntnis mit session-close --no-change abschließen.\n\n")
+        text = ("HiveMind session: " + offered["session_id"] +
+                 "\nContext offered; use has not been verified. "
+                 "Reuse this session ID. Once the task is known: session-context SESSION_ID --task TASK. "
+                 "Save durable knowledge via session-draft / session-close; "
+                 "step_updates change only named IDs; omitted steps remain intact. "
+                 "If there is nothing new, close with session-close --no-change.\n\n")
         text += offered["context"]["text"]
     except Exception as error:
         # Stored context is optional; a broken store or input must never disturb a session start.

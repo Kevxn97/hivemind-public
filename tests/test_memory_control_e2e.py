@@ -212,16 +212,16 @@ class MemoryControlE2E(unittest.TestCase):
     def test_terminal_menu_corrects_content_and_non_tty_default_lists(self):
         self.assertEqual(self.memory()['memories'][0]['id'], 'demo')
         script = ('3\ndemo\nCorrectDB chosen.\n# Corrected decision\n\nCorrectDB is agreed.\n.\n'
-                  'user:terminal\nCorrect terminal mistake\nja\nq\n')
-        output = self.terminal(['memory'], [('Auswahl > '.encode(), script.encode())])
-        self.assertIn('Vorschau', output)
+                  'user:terminal\nCorrect terminal mistake\ny\nq\n')
+        output = self.terminal(['memory'], [('Choice > '.encode(), script.encode())])
+        self.assertIn('Preview', output)
         self.assertEqual(self.memory('show', 'demo')['note']['summary'], 'CorrectDB chosen.')
 
     def test_curses_workspace_opens_memory_menu_and_returns(self):
-        output = self.terminal([], [(b'm Erinnerungen', b'm'),
-                                    [('Erinnerungen verwalten').encode(), b'q\n'],
-                                    [b'm Erinnerungen', b'q']])
-        self.assertIn('Erinnerungen verwalten', output)
+        output = self.terminal([], [(b'm Memories', b'm'),
+                                    [('Manage memories').encode(), b'q\n'],
+                                    [b'm Memories', b'q']])
+        self.assertIn('Manage memories', output)
 
     def test_summary_correction_accepts_explicit_complete_unchanged_body(self):
         shown = self.memory('show', 'demo')

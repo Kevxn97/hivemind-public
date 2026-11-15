@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- English-first terminal, CLI, and generated context; existing notes retain their
+  original language.
 - Guided automation panel in the existing TUI (`hive automation`, key **b**) with opt-in
   source sync, per-vault startup and weekly local evidence review.
 - Selected files and scoped remote sources can be enabled, disabled or removed.

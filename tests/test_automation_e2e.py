@@ -75,7 +75,7 @@ receipts=[{'id':row['id'],'kind':'local','status':'complete','sha256':row['sha25
         self.call('automation', 'run', 'sync', succeeds=False)
         self.assertFalse((self.root / '.state/job.json').exists())
         plain=self.call('--plain',structured=False).stdout
-        self.assertRegex(plain,r'Abgleich\s+ausgeschaltet')
+        self.assertRegex(plain,r'Sync\s+off')
 
     def test_prepared_run_pins_selected_source_scope(self):
         self.add_file()
@@ -154,7 +154,7 @@ receipts=[{'id':row['id'],'kind':'local','status':'complete','sha256':row['sha25
         before = self.snapshot()
         self.terminal(['automation','enable','maintenance'], [('Apply this change', 'n\n')])
         self.assertEqual(before,self.snapshot())
-        output=self.terminal(['automation'], [('Automatik','\x04')])
+        output=self.terminal(['automation'], [('Automation','\x04')])
         self.assertNotIn('Choose an action',output)
         # Opening the native TUI may create reconstructible runtime locks only.
         self.assertEqual(json.loads((self.root/'config/background.json').read_text())['enabled'],False)
@@ -166,25 +166,25 @@ receipts=[{'id':row['id'],'kind':'local','status':'complete','sha256':row['sha25
         self.env['TERM']='xterm-256color'
         before=self.call('automation','status')['schedule']
         output=self.terminal(['automation'], [
-            ('Quellenabgleich','6'),
-            ('Täglicher Quellenabgleich','morgen\n'),
-            ('Wochentag','\n\n'),
-            ('Ungültige Eingabe','\n'),
-            ('Quellenabgleich','0'),
+            ('Source sync','6'),
+            ('Daily source sync','morgen\n'),
+            ('Weekday','\n\n'),
+            ('Invalid input','\n'),
+            ('Source sync','0'),
         ])
         self.assertNotIn('INVALID_ARGUMENT',output)
         self.assertEqual(self.call('automation','status')['schedule'],before)
 
     def test_source_menu_accepts_capitalization_and_rejects_unknown_kind(self):
         self.env['TERM']='xterm-256color'
-        for kind,final in [('Outlook',[('Ungültige Eingabe','\n'),('Quellenabgleich','0')]),
-                           ('Gmail',[('Übernehmen','y'),('Gespeichert','\n'),('Bewusst ausgewählte Quellen','0'),('Quellenabgleich','0')])]:
+        for kind,final in [('Outlook',[('Invalid input','\n'),('Source sync','0')]),
+                           ('Gmail',[('Apply','y'),('Saved','\n'),('Selected sources','0'),('Source sync','0')])]:
             with self.subTest(kind=kind):
                 self.terminal(['automation'],[
-                    ('Quellenabgleich','1'),('Bewusst ausgewählte Quellen','r'),
-                    ('Quelle — gmail',kind+'\n'),('Name für diese Quelle','\n'),
-                    ('Welche Inhalte','Only the fictional pilot.\n'),
-                    ('Erster Zeitraum','\n'),*final])
+                    ('Source sync','1'),('Selected sources','r'),
+                    ('gmail, calendar',kind+'\n'),('Name this source','\n'),
+                    ('What can HiveMind read','Only the fictional pilot.\n'),
+                    ('Initial lookback','\n'),*final])
                 sources=self.call('automation','status')['sources']
                 if kind=='Outlook':self.assertEqual(sources,[])
                 else:

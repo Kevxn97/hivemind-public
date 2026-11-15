@@ -210,29 +210,29 @@ def _handoff_excerpt(handoff, words):
         origin = item if item and 'source_id' in item else handoff.get('field_sources', {}).get(field, handoff)
         if all(origin.get(key) == handoff.get(key) for key in ('source_id', 'evidence', 'observed_at')):
             return ''
-        return (' [Quelle ' + origin['source_id'] + '; ' + hive.GERMAN_EVIDENCE[origin['evidence']] +
+        return (' [Source ' + origin['source_id'] + '; ' + hive.EVIDENCE_LABELS[origin['evidence']] +
                 '; ' + origin['observed_at'] + ']')
     decisions = handoff['decisions']
     if decisions:
         item = decisions[0]
-        label = 'Vereinbart' if item['status'] == 'agreed' else 'Vorgeschlagen, nicht beschlossen'
+        label = 'Agreed' if item['status'] == 'agreed' else 'Proposed, not agreed'
         # Decision and reason share a budget so a long decision cannot hide why.
-        blocks.append('Entscheidung (' + label + ')' + evidence('decisions') + ': ' + _short(item['decision'], 28)
-                      + ' Begründung: ' + _short(item['reason'], 22))
+        blocks.append('Decision (' + label + ')' + evidence('decisions') + ': ' + _short(item['decision'], 28)
+                      + ' Reason: ' + _short(item['reason'], 22))
     if handoff['next_steps']:
         item = handoff['next_steps'][0]
-        label = 'vereinbart' if item['status'] == 'agreed' else 'vorgeschlagen'
+        label = 'agreed' if item['status'] == 'agreed' else 'proposed'
         if item.get('state') == 'waiting':
-            label += ', wartet'
-        blocks.append('Nächster Schritt (' + label + ')' + evidence('next_steps', item) + ': ' + _short(item['text'], 30))
+            label += ', waiting'
+        blocks.append('Next step (' + label + ')' + evidence('next_steps', item) + ': ' + _short(item['text'], 30))
     if handoff['open_questions']:
-        blocks.append('Offene Frage' + evidence('open_questions') + ': ' + _short(handoff['open_questions'][0], 25))
+        blocks.append('Open question' + evidence('open_questions') + ': ' + _short(handoff['open_questions'][0], 25))
     if handoff['project_state'].strip():
-        blocks.append('Projektstand' + evidence('project_state') + ': ' + _short(handoff['project_state'], 45))
+        blocks.append('Project status' + evidence('project_state') + ': ' + _short(handoff['project_state'], 45))
     for item in decisions[1:]:
-        label = 'vereinbart' if item['status'] == 'agreed' else 'vorgeschlagen'
-        blocks.append('Weitere Entscheidung (' + label + ')' + evidence('decisions') + ': ' + _short(item['decision'], 20)
-                      + ' Begründung: ' + _short(item['reason'], 15))
+        label = 'agreed' if item['status'] == 'agreed' else 'proposed'
+        blocks.append('Another decision (' + label + ')' + evidence('decisions') + ': ' + _short(item['decision'], 20)
+                      + ' Reason: ' + _short(item['reason'], 15))
     text = '\n\n'.join(blocks)
     return text if len(text.split()) <= words else _short(text, max(1, words - 1))
 
@@ -278,24 +278,24 @@ def _provenance(note, text, reason):
 
 
 def _metadata(item):
-    fresh = 'Prüftermin überschritten' if item['freshness'] == 'stale' else 'im Prüfintervall'
+    fresh = 'Review overdue' if item['freshness'] == 'stale' else 'within review period'
     handoff = item.get('handoff_evidence')
     source = next(s for s in item['sources'] if s['id'] == handoff['source_id']) if handoff else item['sources'][0]
     lines = ['## ' + _short(item['title'], 8),
              f"`{item['id']}@{item['revision']}`",
-             f"Notizevidenz: {hive.GERMAN_EVIDENCE[item['evidence']]} · Status: {item['status']} · {fresh}; fällig {item['stale_after']}.",
-             'Auswahl: ' + _short(item['reason'], 12),
-             ('Quelle der Übergabe: ' if handoff else 'Quelle auf Notizebene: ') + _short(source['resource'], 12) + ' [' + source['id'] + ']']
+             f"Note evidence: {hive.EVIDENCE_LABELS[item['evidence']]} · Status: {item['status']} · {fresh}; due {item['stale_after']}.",
+             'Selection: ' + _short(item['reason'], 12),
+             ('Handoff source: ' if handoff else 'Note source: ') + _short(source['resource'], 12) + ' [' + source['id'] + ']']
     if handoff:
-        lines.insert(3, 'Aktuelle Übergabe: ' + hive.GERMAN_EVIDENCE[handoff['evidence']]
-                     + ' · beobachtet ' + handoff['observed_at'] + '; fortgeführte Felder behalten ihre eigenen Belege.')
+        lines.insert(3, 'Current handoff: ' + hive.EVIDENCE_LABELS[handoff['evidence']]
+                     + ' · observed ' + handoff['observed_at'] + '; retained fields keep their own evidence.')
     if len(item['sources']) > 1:
-        lines[-1] += f"; {len(item['sources']) - 1} weitere in `hive note {item['id']}`."
+        lines[-1] += f"; {len(item['sources']) - 1} more in `hive note {item['id']}`."
     if item['verified']:
         last = max(item['verified'], key=lambda v: hive.timestamp(v['at']))
-        lines.append(('Ältere Notizprüfung: ' if handoff else 'Prüfung laut Notiz: ') + last['at'] + '. Umfang: ' + _short(last.get('scope', 'nicht näher angegeben'), 18))
+        lines.append(('Earlier note review: ' if handoff else 'Review recorded in note: ') + last['at'] + '. Scope: ' + _short(last.get('scope', 'not specified'), 18))
     else:
-        lines.append('Keine gesonderte Verifikation dokumentiert.')
+        lines.append('No separate verification documented.')
     return '\n'.join(lines)
 
 
@@ -325,7 +325,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
             if other is not None and other not in member_ids and other in notes and _visible(notes[other]):
                 linked.setdefault(other, []).append(edge)
     terms = hive.query_terms(task)
-    candidates = [(lead, 'Projektüberblick als gemeinsamer Ausgangspunkt', 0)]
+    candidates = [(lead, 'Project overview as a shared starting point', 0)]
     if task.strip():
         # Scoped search protects project details from being crowded out by global
         # hits. Cross-project matches are limited to reusable decisions/lessons
@@ -348,20 +348,20 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
             score = _match(n['title'] + ' ' + n['summary'] + ' ' + n['body'] + ' ' + knowledge.render(n), terms)
             if not score:
                 continue
-            reason = 'Aufgabenbezug im Projekt' if local else 'Aufgabenbezug über belegte Querverbindung' if ident in linked else 'Passende Erfahrung/Entscheidung aus anderem Kontext; keine Projektabhängigkeit behauptet'
+            reason = 'Task match within project' if local else 'Task match through a documented cross-connection' if ident in linked else 'Relevant lesson or decision from another context; no project dependency is claimed'
             ranked.append((n, reason, score, local))
         ranked.sort(key=lambda r: (-r[2], not r[3], r[0]['type'] not in {'decision', 'lesson'}, r[0]['id']))
         candidates += [(n, reason, score) for n, reason, score, _ in ranked[:7]]
     else:
         remaining = [n for n in members if n['id'] != lead['id']]
         remaining.sort(key=lambda n: (n['type'] not in {'decision', 'lesson'}, n['evidence'] != 'disputed', n['id']))
-        candidates += [(n, 'Entscheidung oder Kontext im selben Projekt', 0) for n in remaining[:5]]
+        candidates += [(n, 'Decision or context in the same project', 0) for n in remaining[:5]]
         external = sorted((notes[i] for i in linked), key=lambda n: (not any(e['relation'] in hive.STRONG for e in linked[n['id']]), n['type'] not in {'decision', 'lesson'}, n['id']))
-        candidates += [(n, 'Belegte Querverbindung zum Projekt', 0) for n in external[:2]]
-    header = '# Projektkontext · ' + scope
+        candidates += [(n, 'Documented cross-connection to the project', 0) for n in external[:2]]
+    header = '# Project context · ' + scope
     if task.strip():
-        header += '\nAufgabe: ' + _short(task, 16)
-    footer = 'Gespeicherter Kontext, kein Live-Stand. Bestätigung gilt nur im dokumentierten Prüfumfang. Quellen gelten auf Notizebene; weiterführende Details mit `hive note ID`.'
+        header += '\nTask: ' + _short(task, 16)
+    footer = 'Stored context, not live status. Confirmation applies only within its documented scope. Sources apply to notes; see `hive note ID` for details.'
     blocks, selected, reading_blocks = [], [], []
     remaining = budget - len(header.split()) - len(footer.split())
     for index, (n, reason, score) in enumerate(candidates):
@@ -391,7 +391,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
         remaining -= len(block.split())
     no_match = bool(task.strip()) and not any(i['matched_terms'] for i in selected)
     if no_match:
-        notice = 'Keine passenden Aufgabenbelege gefunden; nur Projektüberblick.'
+        notice = 'No matching task evidence found; project overview only.'
         if len(notice.split()) <= remaining:
             blocks.append(notice)
     text = '\n\n'.join([header, *blocks, footer]) + '\n'

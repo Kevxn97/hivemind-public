@@ -188,7 +188,7 @@ class TerminalE2E(unittest.TestCase):
         return session
 
     def test_background_paused_degraded_and_backoff_are_not_reported_as_ready(self):
-        for state,expected in [({'status':'paused','message':'Automatik ausgeschaltet'},'pausiert'),({'status':'degraded','message':'Konfiguration beschädigt'},'gestört'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'Quellenpause')]:
+        for state,expected in [({'status':'paused','message':'Automatik ausgeschaltet'},'paused'),({'status':'degraded','message':'Konfiguration beschädigt'},'degraded'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'Quellenpause')]:
             code="import sys;sys.path.insert(0,sys.argv[1]);import terminal_ui,background;background.status=lambda root:"+repr({'daemon_running':True,**state})+";print(terminal_ui.render_plain(__import__('pathlib').Path(sys.argv[2]),width=120))"
             result=subprocess.run([sys.executable,'-c',code,str(BASE),str(self.root)],capture_output=True,text=True,timeout=10)
             self.assertEqual(result.returncode,0,result.stderr);self.assertIn(expected,result.stdout)
@@ -197,28 +197,28 @@ class TerminalE2E(unittest.TestCase):
         result = subprocess.run([sys.executable,str(BASE/'terminal_ui.py'),'--root',str(self.root)],capture_output=True,text=True,timeout=5)
         (OUT/'plain-snapshot.txt').write_text(result.stdout+result.stderr)
         self.assertEqual(result.returncode,0,result.stderr)
-        self.assertIn('HIVE',result.stdout);self.assertIn('2 Notizen',result.stdout)
-        self.assertIn('Kein interaktives Terminal',result.stdout)
+        self.assertIn('HIVE',result.stdout);self.assertIn('2 notes',result.stdout)
+        self.assertIn('No interactive terminal',result.stdout)
         self.assertNotIn('\x1b',result.stdout)
         self.assertFalse((self.root/'.state/launcher.json').exists())
         self.assertFalse((self.root/'.state/job.json').exists())
 
     def test_real_pty_search_detail_sources_network_resize_and_quit(self):
         session=self.terminal('navigation')
-        session.expect('ÜBERSICHT')
-        session.send('2');session.expect('WISSEN')
-        session.send('/');session.expect('SUCHE')
+        session.expect('OVERVIEW')
+        session.send('2');session.expect('KNOWLEDGE')
+        session.send('/');session.expect('SEARCH')
         session.send('Einzigartig\r');session.expect('Einzigartige Erkenntnis')
         session.send('\r');session.expect('Synthetic body')
         session.send('o');session.expect('synthetic://source')
         session.send('\x1b');session.drain(.2)
         session.send('\x1b');session.drain(.2)
-        session.send('3');session.expect('NETZ')
+        session.send('3');session.expect('NETWORK')
         session.send('\r');session.expect('Synthetic dependency')
-        mark=session.send('z');session.expect('ZEITRAFFER',since=mark)
+        mark=session.send('z');session.expect('TIMELAPSE',since=mark)
         session.send('z');session.send('+');session.send(' ');session.send(' ');session.drain(.2)
         session.send('\r');session.send('\r');session.send('\x7f');session.drain(.3)
-        mark=session.send('f');session.expect('Übersicht',since=mark)
+        mark=session.send('f');session.expect('Overview',since=mark)
         session.send('f');session.drain(.2)
         session.resize(120,36);session.drain(.3)
         session.resize(80,24);session.drain(.3)
@@ -231,10 +231,10 @@ class TerminalE2E(unittest.TestCase):
 
     def test_capture_multiline_unicode_is_pending_and_canonical_is_unchanged(self):
         session=self.terminal('capture')
-        session.expect('ÜBERSICHT')
-        session.send('n');session.expect('GEDANKE FESTHALTEN')
+        session.expect('OVERVIEW')
+        session.send('n');session.expect('CAPTURE A THOUGHT')
         session.send('Terminal-Gedanke\rGröße und Ruhe.\nZweite Zeile.\x07')
-        session.expect('Gedanke gespeichert')
+        session.expect('Thought saved')
         session.send('4');session.expect('Terminal-Gedanke')
         session.send('\r');session.expect('Zweite Zeile.')
         session.send('q');session.wait(timeout=3)
@@ -253,26 +253,26 @@ class TerminalE2E(unittest.TestCase):
                    'terminal-e2e','Synthetic decision workspace','synthetic://test')
         before={str(p.relative_to(self.root)):p.read_bytes() for parent in ('wiki','.history') for p in (self.root/parent).rglob('*') if p.is_file()}
         session=self.terminal('decision-workspace')
-        session.expect('ÜBERSICHT')
+        session.expect('OVERVIEW')
         session.send('2/Einzigartig\r');session.expect('Einzigartige Erkenntnis')
-        session.send('w');session.expect('WARUM /')
+        session.send('w');session.expect('WHY /')
         session.send('\x1b');session.drain(.2)
-        session.send('u');session.expect('Suchfeedback gespeichert')
+        session.send('u');session.expect('Search feedback saved')
         feedback=[json.loads(line) for line in (self.root/'.state/search-feedback.jsonl').read_text().splitlines()]
         self.assertEqual(len(feedback),1)
         self.assertEqual(feedback[0]['query'],'Einzigartig')
         self.assertFalse(feedback[0]['helpful'])
         session.send('\x1b');session.drain(.2)
-        session.send('/Verbundenes\r');session.expect('Suche: Verbundenes')
-        session.send('a');session.expect('AUSWIRKUNG /')
+        session.send('/Verbundenes\r');session.expect('Search: Verbundenes')
+        session.send('a');session.expect('IMPACT /')
         session.expect('Einzigartige Erkenntnis')
         session.send('\x1b');session.drain(.2)
         session.send('\x1b');session.drain(.2)
-        session.send('/Projektansicht\r');session.expect('Suche: Projektansicht')
-        session.send('e');session.expect('ERFAHRUNGEN /')
+        session.send('/Projektansicht\r');session.expect('Search: Projektansicht')
+        session.send('e');session.expect('LESSONS /')
         session.expect('Einzigartige Erkenntnis')
         session.send('\x1b');session.drain(.2)
-        session.send('D');session.expect('ÄNDERUNGEN /')
+        session.send('D');session.expect('CHANGES /')
         session.send('\x1b');session.send('q');session.wait(timeout=3)
         self.assertEqual(session.proc.returncode,0)
         self.assertNotIn('Traceback',session.data.decode('utf-8','replace'))
@@ -280,9 +280,9 @@ class TerminalE2E(unittest.TestCase):
 
     def test_cancelled_capture_and_empty_search_do_not_change_knowledge(self):
         session=self.terminal('cancel')
-        session.expect('ÜBERSICHT');session.send('n');session.expect('GEDANKE FESTHALTEN')
+        session.expect('OVERVIEW');session.send('n');session.expect('CAPTURE A THOUGHT')
         session.send('Verwerfen\rNichts speichern.\x1b');session.drain(.4)
-        session.send('2/kein-passender-begriff\r');session.expect('Keine Treffer')
+        session.send('2/kein-passender-begriff\r');session.expect('No results')
         session.send('q');session.wait(timeout=3)
         self.assertFalse(list((self.root/'INBOX').glob('*.md')))
 
@@ -296,13 +296,13 @@ class TerminalE2E(unittest.TestCase):
         payload['step_updates']=[{'text':'Zebrapruefung','status':'agreed','state':'open'}]
         sessions.close_session(self.root,opened['session_id'],payload)
         session=self.terminal('work-states')
-        session.expect('Offene Arbeit')
+        session.expect('Open work')
         session.expect('Zebrapruefung')
         for cols,rows in ((120,36),(58,17),(80,24)):
             session.resize(cols,rows);session.drain(.3)
-            self.assertIn('Offene Arbeit',session.screen_text())
+            self.assertIn('Open work',session.screen_text())
         session.send('2/Projektarbeit\r');session.send('\r')
-        session.expect('Zebrapruefung');session.expect('vereinbart')
+        session.expect('Zebrapruefung');session.expect('agreed')
         session.send('\x1bq');session.wait(timeout=3)
         self.assertEqual(session.proc.returncode,0)
 
@@ -320,11 +320,11 @@ terminal_ui.ingest.refresh_calendar=calendar
 raise SystemExit(terminal_ui.run(root))
 """
         session=self.terminal('explicit-actions',code)
-        session.expect('ÜBERSICHT')
+        session.expect('OVERVIEW')
         self.assertFalse((self.root/'sync-called.txt').exists());self.assertFalse((self.root/'calendar-called.txt').exists())
-        session.send('s');session.expect('läuft im Hintergrund weiter.')
+        session.send('s');session.expect('continues in the background.')
         self.assertTrue((self.root/'sync-called.txt').exists())
-        session.send('r');session.expect('Kalender aktualisiert',timeout=8)
+        session.send('r');session.expect('Calendar updated',timeout=8)
         self.assertTrue((self.root/'calendar-called.txt').exists())
         session.send('q');session.wait(timeout=3)
 
@@ -333,8 +333,8 @@ raise SystemExit(terminal_ui.run(root))
         record[2].write_text(record[1]+'\nUnjournaled corruption.\n')
         result=subprocess.run([sys.executable,str(BASE/'terminal_ui.py'),'--root',str(self.root)],capture_output=True,text=True,timeout=5)
         self.assertNotEqual(result.returncode,0)
-        self.assertIn('Wissensprüfung fehlgeschlagen',result.stdout)
-        self.assertNotIn('2 Notizen',result.stdout)
+        self.assertIn('Knowledge check failed',result.stdout)
+        self.assertNotIn('2 notes',result.stdout)
 
 
 if __name__=='__main__':

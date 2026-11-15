@@ -77,18 +77,18 @@ def compact(receipt, context, workflow, maximum=None):
     for ref, group in groups.items():
         if group['paragraphs']:
             blocks.append((ref, group['paragraphs'][0]))
-    blocks.extend((None, 'Wissenslücke: ' + gap) for gap in workflow['gaps'])
+    blocks.extend((None, 'Knowledge gap: ' + gap) for gap in workflow['gaps'])
     for item in workflow['changes']['items']:
         ref = item['id'] + '@' + item['revision']
         if ref in included:
-            blocks.append((None, 'Änderung/Prüfung: ' + ref + ' — ' + ' '.join(item['reasons'])))
+            blocks.append((None, 'Change/review: ' + ref + ' — ' + ' '.join(item['reasons'])))
     for item in workflow['lessons']['items']:
         ref = item['id'] + '@' + item['revision']
         if ref in included:
-            blocks.append((None, 'Erfahrung: ' + ref + ' — ' + item['summary'] + '; Übertragbarkeit prüfen.'))
+            blocks.append((None, 'Lesson: ' + ref + ' — ' + item['summary'] + '; check applicability.'))
     for item in workflow['open_work'][:8]:
-        blocks.append((None, 'Arbeit: ' + item['text'] + ' [' + item['status'] + '; ' + item['state'] +
-                       '; ' + item['evidence'] + '; Quelle ' + item['source_id'] + '; ' + item['observed_at'] + ']'))
+        blocks.append((None, 'Work: ' + item['text'] + ' [' + item['status'] + '; ' + item['state'] +
+                       '; ' + item['evidence'] + '; source ' + item['source_id'] + '; ' + item['observed_at'] + ']'))
     for index in range(1, max((len(g['paragraphs']) for g in groups.values()), default=0)):
         for ref, group in groups.items():
             if index < len(group['paragraphs']):

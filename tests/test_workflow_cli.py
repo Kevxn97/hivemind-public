@@ -63,8 +63,8 @@ class WorkflowCliTest(unittest.TestCase):
         self.assertEqual(hook.returncode, 0, hook.stderr)
         offered = json.loads(hook.stdout)['hookSpecificOutput']['additionalContext']
         self.assertIn('Zebramuster', offered)
-        self.assertIn('HiveMind-Sitzung:', offered)
-        self.assertNotIn('HiveMind-Sitzung: ' + sid, offered)  # Old source IDs remain attributable.
+        self.assertIn('HiveMind session:', offered)
+        self.assertNotIn('HiveMind session: ' + sid, offered)  # Old source IDs remain attributable.
         self.assertTrue(hive.check(self.root)['valid'])
 
     def test_task_budget_and_no_change_do_not_write_knowledge(self):

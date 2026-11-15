@@ -48,13 +48,13 @@ def build(root, target, task, budget, previous_at=None):
     lessons = insights.lessons(root, route['cluster'], task=task, limit=3)
     gaps = []
     if not handoff.get('project_state'):
-        gaps.append('Kein strukturierter Projektstand; Projekttext und Quellen prüfen.')
+        gaps.append('No structured project status; check the project text and sources.')
     if not handoff.get('decisions'):
-        gaps.append('Keine Entscheidungen in der letzten Übergabe; weitere Belege im Projektkontext prüfen.')
+        gaps.append('No decisions in the last handoff; check further evidence in project context.')
     if not items:
-        gaps.append('Keine erfassten Arbeitsschritte; daraus folgt nicht, dass nichts offen ist.')
+        gaps.append('No recorded work items; this does not mean nothing is open.')
     if hive.freshness(note) == 'stale':
-        gaps.append('Prüftermin überschritten; veränderliche Aussagen vor Verwendung prüfen.')
+        gaps.append('Review overdue; check changeable claims before use.')
     workflow = {'version': 1, 'project': {'id': note['id'], 'revision': hive.digest(raw),
                 'summary': note['summary'], 'project_state': handoff.get('project_state', ''),
                 'decisions': handoff.get('decisions', []), 'open_questions': handoff.get('open_questions', []),
@@ -67,30 +67,30 @@ def build(root, target, task, budget, previous_at=None):
                                   'session-close SESSION_ID --file UNIQUE_FILE',
                                   'session-close SESSION_ID --no-change']}
     reserve = min(480, max(0, budget - 180), budget // 2)
-    lines = ['## Arbeit für die Sitzung']
+    lines = ['## Work for this session']
     for item in workflow['open_work'][:8]:
         text = project_context._short(item['text'], 24)
         lines.append(f"- {item['id']} · {work_items.LABELS[item['state']]} · {item['status']}: {text} "
-                     f"[Quelle {item['source_id']}; {item['evidence']}; {item['observed_at']}]")
+                     f"[Source {item['source_id']}; {item['evidence']}; {item['observed_at']}]")
     if len(workflow['open_work']) > 8:
-        lines.append('Weitere offene Schritte im strukturierten workflow.open_work.')
+        lines.append('More open steps are in structured workflow.open_work.')
     if not workflow['open_work']:
-        lines.append('Keine erfassten offenen Schritte; dies ist kein Vollständigkeitsnachweis.')
-    lines.append('## Änderungen / ' + ('seit dem letzten Kontextangebot' if previous_at else 'erster Einstieg, letzte sieben Tage'))
+        lines.append('No open steps recorded; this does not establish completeness.')
+    lines.append('## Changes / ' + ('since context was last offered' if previous_at else 'first session, last seven days'))
     for item in changes['items'][:3]:
         lines.append('- ' + item['id'] + ': ' + ' '.join(item['reasons']) + ' @' + item['revision'][:12])
     if not changes['items']:
-        lines.append('Keine passenden Änderungen erfasst.')
+        lines.append('No matching changes recorded.')
     for item in lessons['items'][:2]:
-        lines.append('Erfahrung: ' + item['id'] + ' — ' + project_context._short(item['summary'], 18) +
-                     '; Übertragbarkeit prüfen, Belege in workflow.lessons.')
+        lines.append('Lesson: ' + item['id'] + ' — ' + project_context._short(item['summary'], 18) +
+                     '; check applicability; evidence in workflow.lessons.')
     if gaps:
-        lines.append('Wissenslücke: ' + gaps[0])
+        lines.append('Knowledge gap: ' + gaps[0])
     extra, used = [], 0
     for line in lines:
         size = len(line.split())
         if used + size + 9 > reserve:
-            extra.append('Weitere Sitzungsdetails im strukturierten workflow; gezielt nachladen.')
+            extra.append('More session details are in the structured workflow; load as needed.')
             break
         extra.append(line)
         used += size
@@ -103,5 +103,5 @@ def build(root, target, task, budget, previous_at=None):
     text = (prefix + '\n\n' if prefix else '') + context['text']
     context.update(text=text, budget=budget, word_count=len(text.split()))
     if context.get('task_match') is False:
-        gaps.append('Keine passenden Aufgabenbelege gefunden; keine Antwort aus Worttreffern ableiten.')
+        gaps.append('No matching task evidence found; do not infer an answer from word matches.')
     return context, workflow

@@ -5,7 +5,7 @@ import json
 import re
 
 STATES = {'open', 'waiting', 'done', 'dropped'}
-LABELS = {'open': 'Offen', 'waiting': 'Wartet', 'done': 'Erledigt', 'dropped': 'Verworfen'}
+LABELS = {'open': 'Open', 'waiting': 'Waiting', 'done': 'Done', 'dropped': 'Dropped'}
 ID = re.compile(r'^step-[0-9a-f]{16}$')
 FIELDS = {'id', 'text', 'status', 'state', 'source_id', 'observed_at', 'evidence', 'reason'}
 PATCH_FIELDS = {'id', 'text', 'status', 'state', 'reason'}
@@ -166,5 +166,5 @@ def merge(note, payload):
 
 
 def line(item):
-    agreement = 'vereinbart' if item['status'] == 'agreed' else 'vorgeschlagen'
+    agreement = 'agreed' if item['status'] == 'agreed' else 'proposed'
     return f"{item['id']} · {LABELS[item['state']]} · {agreement}: {item['text']}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HiveMind: Hintergrundwissen und Terminal. Kein HTTP-Server, kein Browser."""
+"""HiveMind: local knowledge and terminal. No HTTP server or browser."""
 import argparse
 import datetime as dt
 import json
@@ -36,7 +36,7 @@ def service_status(root):
             import background
         return background.status(root)
     except ImportError:
-        return {'installed': False, 'daemon_running': False, 'message': 'Hintergrunddienst noch nicht installiert.'}
+        return {'installed': False, 'daemon_running': False, 'message': 'Background service is not installed yet.'}
 
 
 def snapshot(root):
@@ -60,23 +60,23 @@ def plain_status(data):
     running = bg.get('daemon_running', False)
     job = data['job']
     operational = ''
-    if bg.get('status') == 'paused': operational = ' · Automatik pausiert'
-    elif bg.get('status') == 'degraded': operational = ' · gestört'
+    if bg.get('status') == 'paused': operational = ' · automation paused'
+    elif bg.get('status') == 'degraded': operational = ' · degraded'
     elif bg.get('backoff_until'):
         try:
-            if dt.datetime.fromisoformat(bg['backoff_until'].replace('Z','+00:00')) > dt.datetime.now(dt.timezone.utc): operational = ' · Quellenpause'
-        except (ValueError, TypeError): operational = ' · Pausenzeit prüfen'
+            if dt.datetime.fromisoformat(bg['backoff_until'].replace('Z','+00:00')) > dt.datetime.now(dt.timezone.utc): operational = ' · source backoff'
+        except (ValueError, TypeError): operational = ' · check backoff time'
     width = max(40, min(shutil.get_terminal_size((80, 24)).columns, 110))
     line = '─' * width
-    return '\n'.join([line, '  HiveMind  /  DEIN WISSEN IM HINTERGRUND', line,
-        f"  Wissen       {data['active_notes']} aktiv · {data['knowledge']['notes']} erhalten",
-        f"  Eingang      {data['pending_thoughts']} offen",
-        f"  Dienst       {'läuft' if running else 'gestoppt'}{operational}",
-        '  Automatik    '+str(bg.get('message') or 'Stand wird geprüft.'),
-        '  Abgleich     '+{'disabled':'ausgeschaltet','paused':'pausiert'}.get(job.get('status'),job.get('status','idle')), '',
-        '  hive          Terminal öffnen', '  hive search   Wissen suchen',
-        '  hive capture  Gedanken festhalten', '  hive sync     Quellen abgleichen',
-        '  hive status   Hintergrund prüfen', line])
+    return '\n'.join([line, '  HiveMind  /  YOUR KNOWLEDGE IN THE BACKGROUND', line,
+        f"  Knowledge    {data['active_notes']} active · {data['knowledge']['notes']} total",
+        f"  Inbox        {data['pending_thoughts']} pending",
+        f"  Background   {'running' if running else 'stopped'}{operational}",
+        '  Automation   '+str(bg.get('message') or 'Checking status.'),
+        '  Sync         '+{'disabled':'off','paused':'paused'}.get(job.get('status'),job.get('status','idle')), '',
+        '  hive          Open terminal', '  hive search   Search knowledge',
+        '  hive capture  Capture a thought', '  hive sync     Sync sources',
+        '  hive status   Check background status', line])
 
 
 def display(value, json_mode=False):
@@ -88,12 +88,12 @@ def display(value, json_mode=False):
         n = value['note']
         print('\n'+n['title']+'\n'+'═'*min(80,len(n['title']))+'\n')
         print(n['body'])
-        print('\nGRUNDLAGE / QUELLEN')
+        print('\nEVIDENCE / SOURCES')
         for i, source in enumerate(n.get('sources', []), 1):
             print(f"  {i}. {source.get('title', source['id'])}\n     {source['resource']}")
     elif isinstance(value, list):
         if not value:
-            print('Keine Einträge.')
+            print('No entries.')
         for item in value:
             print(f"  {item.get('id', item.get('target', ''))}  {item.get('title', item.get('relation', ''))}")
             if item.get('summary'):
@@ -105,7 +105,7 @@ def display(value, json_mode=False):
 def neighbors(root, ident):
     _, notes = knowledge(root)
     if ident not in notes:
-        raise ValueError('Unbekannte Notiz: '+ident)
+        raise ValueError('Unknown note: '+ident)
     return [{'origin': origin, 'relation': edge['relation'], 'target': edge['target'],
              'id': edge['target'] if origin == ident else origin,
              'title': notes[edge['target'] if origin == ident else origin]['title']}
@@ -133,28 +133,28 @@ def main(argv=None):
     forwarded = workflow_cli.dispatch(sys.argv[1:] if argv is None else argv, default_vault())
     if forwarded is not None:
         return forwarded
-    parser = argparse.ArgumentParser(description='HiveMind läuft im Hintergrund. Ohne Befehl öffnet sich das Terminal-Interface.',
-        epilog='Arbeitsbefehle: project-register, project-unregister, projects, session-open, session-draft, session-close, session-status, why, impact, lessons, changes, feedback. Details: hive BEFEHL --help.')
+    parser = argparse.ArgumentParser(description='HiveMind runs in the background. With no command, the terminal interface opens.',
+        epilog='Workflow commands: project-register, project-unregister, projects, session-open, session-draft, session-close, session-status, why, impact, lessons, changes, feedback. Details: hive COMMAND --help.')
     parser.add_argument('--root', type=Path, default=default_vault())
-    parser.add_argument('--json', action='store_true', help='Maschinenlesbare Ausgabe')
-    parser.add_argument('--plain', action='store_true', help='Lesbare Textausgabe statt Vollbild-Terminal')
+    parser.add_argument('--json', action='store_true', help='Machine-readable output')
+    parser.add_argument('--plain', action='store_true', help='Readable text instead of the full-screen terminal')
     parser.add_argument('--no-open', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, help=argparse.SUPPRESS)
     mode = parser.add_mutually_exclusive_group()
-    for flag, help_text in [('status','Hintergrund und Quellen prüfen'),('sync','Quellen abgleichen'),('sources','Ausgewählte Quellen anzeigen'),('source-status','Quellenstände anzeigen'),('calendar','Mac-Kalender laden'),('check','Kanon prüfen'),('graph','Verbindungen im Terminal erkunden'),('stop','Hintergrunddienst stoppen'),('serve',argparse.SUPPRESS)]:
+    for flag, help_text in [('status','Check background and sources'),('sync','Sync sources'),('sources','Show selected sources'),('source-status','Show source status'),('calendar','Load the Mac calendar'),('check','Check canonical knowledge'),('graph','Explore connections in the terminal'),('stop','Stop background service'),('serve',argparse.SUPPRESS)]:
         mode.add_argument('--'+flag, action='store_true', help=help_text)
     mode.add_argument('--search', metavar='TEXT')
     mode.add_argument('--note', metavar='ID')
     mode.add_argument('--neighbors', metavar='ID')
-    mode.add_argument('--brief', nargs='?', const='.', metavar='ORDNER', help='Projektkontext für einen Ordner oder projects/<id>')
+    mode.add_argument('--brief', nargs='?', const='.', metavar='FOLDER', help='Project context for a folder or projects/<id>')
     mode.add_argument('--read-source', metavar='ID')
     mode.add_argument('--capture', nargs='?', const='', metavar='TEXT')
     mode.add_argument('--background', choices=['start','stop','status'])
-    parser.add_argument('--title', default='', help='Titel für einen Gedanken')
-    parser.add_argument('--history', action='store_true', help='Archiv in Suche einbeziehen')
-    parser.add_argument('--task', help='Aufgabe für die Auswahl des Projektkontexts')
-    parser.add_argument('--budget', type=int, help='Gesamtbudget des Projektkontexts in Wörtern')
-    parser.add_argument('--detach', action='store_true', help='Abgleich starten und sofort zurückkehren')
+    parser.add_argument('--title', default='', help='Title for a thought')
+    parser.add_argument('--history', action='store_true', help='Include the archive in search')
+    parser.add_argument('--task', help='Task for project context selection')
+    parser.add_argument('--budget', type=int, help='Total project context budget in words')
+    parser.add_argument('--detach', action='store_true', help='Start sync and return immediately')
     parser.add_argument('command', nargs='?', choices=['status','sync','sources','capture','search','note','neighbors','brief','graph','check','start','stop','calendar'])
     parser.add_argument('words', nargs='*')
     args = parser.parse_args(argv); root = args.root.expanduser().resolve()
@@ -175,7 +175,7 @@ def main(argv=None):
         else:
             from integrations import ingest
         if args.serve:
-            print('HiveMind wird ausschließlich im Terminal und im Hintergrund betrieben. Kein Webserver. Nutze hive oder hive start.', file=sys.stderr); return 2
+            print('HiveMind runs in the terminal and background without a web server. Use hive or hive start.', file=sys.stderr); return 2
         if args.stop: args.background = 'stop'
         if args.background:
             if __package__:
@@ -194,14 +194,14 @@ def main(argv=None):
             display(found,args.json); return 0
         if args.note:
             _, notes = knowledge(root)
-            if args.note not in notes: raise ValueError('Unbekannte Notiz: '+args.note)
+            if args.note not in notes: raise ValueError('Unknown note: '+args.note)
             display({'note':notes[args.note],'freshness':hive.freshness(notes[args.note])},args.json); return 0
         if args.neighbors:
             display(neighbors(root,args.neighbors),args.json); return 0
         if args.brief is not None:
             target = args.brief or '.'
             result = hive.brief(root,target,task=args.task,budget=args.budget)
-            if result is None: raise ValueError('Kein eindeutiges HiveMind-Projekt für '+str(Path(target).expanduser().resolve()))
+            if result is None: raise ValueError('No unique HiveMind project for '+str(Path(target).expanduser().resolve()))
             if args.json: display(result,True)
             else: print(result['text'],end='')
             return 0
@@ -220,7 +220,7 @@ def main(argv=None):
             text = args.capture
             if text == '' and sys.stdin.isatty(): return open_terminal(root,'inbox',args.plain)
             if text == '': text = sys.stdin.read(24001)
-            if not text.strip(): raise ValueError('Ein Gedanke braucht Text.')
+            if not text.strip(): raise ValueError('A thought needs text.')
             display(ingest.capture(root,text,title=args.title),args.json); return 0
         if args.calendar:
             result=ingest.refresh_calendar(root);display(result,args.json)
@@ -238,7 +238,7 @@ def main(argv=None):
         if args.json: display(snapshot(root),True);return 0
         return open_terminal(root,plain=args.plain)
     except KeyboardInterrupt:
-        print('\nTerminal geschlossen. Ein laufender Abgleich bleibt im Hintergrund prüfbar.',file=sys.stderr); return 130
+        print('\nTerminal closed. A running sync remains available in the background.',file=sys.stderr); return 130
     except (OSError,ValueError,KeyError,ImportError,RuntimeError) as error:
         print('HiveMind: '+str(error),file=sys.stderr); return 1
 

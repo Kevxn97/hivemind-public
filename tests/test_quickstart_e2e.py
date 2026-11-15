@@ -210,11 +210,11 @@ class QuickstartE2E(unittest.TestCase):
 
     def test_terminal_opens_the_source_menu_and_returns_after_saving(self):
         self.setup_project()
-        output = self.terminal([('Quellen', 's'), ('Choose a source', '4\n'),
+        output = self.terminal([('Sources', 's'), ('Choose a source', '4\n'),
                                 ('Summary', 'A memory saved from the main terminal.\n'),
                                 ('Title', '\n'), ('Source reference', '\n'),
                                 ('Save this selection', 'y\n'),
-                                ('Press Enter', '\n'), ('Quellen', 'q')])
+                                ('Press Enter', '\n'), ('Sources', 'q')])
         self.assertIn('Saved to the journal', output)
         context = self.call('session-open', self.project, '--agent', 'codex')['context']['text']
         self.assertIn('A memory saved from the main terminal', context)

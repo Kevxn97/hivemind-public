@@ -59,8 +59,21 @@ class InsightsTest(unittest.TestCase):
         self.assertIn('synthetic://evidence', result['text'])
         self.assertNotIn('PRIVATE', json.dumps(result))
         self.assertEqual(before, self.canonical())
-        with self.assertRaisesRegex(ValueError, 'persönlich'):
+        with self.assertRaisesRegex(ValueError, 'personal'):
             insights.explain(self.root, 'secret-person')
+
+    def test_english_and_legacy_german_headings_remain_discoverable(self):
+        self.put(note('english-open', cluster='projects/demo',
+                      body='# Project\n\n## Open questions\n\nShould we add another source?'),
+                 note('german-open', cluster='projects/demo',
+                      body='# Projekt\n\n## Offene Fragen\n\nWelche Quelle fehlt?'),
+                 note('english-decision', type='decision', cluster='projects/demo',
+                      body='# Decision\n\nOld context.\n\n## Why\n\nThe test measured latency.'))
+        result = insights.changes(self.root, 'projects/demo', since='2026-01-02T00:00:00Z')
+        self.assertEqual({item['id'] for item in result['items']}, {'english-open', 'german-open'})
+        explanation = insights.explain(self.root, 'english-decision')
+        self.assertIn('The test measured latency.', explanation['items'][0]['excerpt'])
+        self.assertNotIn('Old context', explanation['items'][0]['excerpt'])
 
     def test_impact_uses_incoming_dependencies_and_stops_cycles(self):
         self.put(note('assumption', links=[link('foundation'), link('project-two')]),
@@ -87,9 +100,9 @@ class InsightsTest(unittest.TestCase):
         result = insights.explain(self.root, 'demo-project')
         self.assertEqual(result['items'][0]['evidence'], 'confirmed')
         self.assertEqual(result['items'][0]['handoff_evidence'], 'reported')
-        self.assertIn('Aktuelle Übergabe: berichtet', result['text'])
+        self.assertIn('Current handoff: reported', result['text'])
         self.assertIn('synthetic://new-handoff', result['text'])
-        self.assertLess(result['text'].index('Aktuelle Übergabe: berichtet'), result['text'].index('New state reported'))
+        self.assertLess(result['text'].index('Current handoff: reported'), result['text'].index('New state reported'))
 
     def test_impact_reports_replacements_and_conflicts_without_transitive_guess(self):
         self.put(note('old-choice', status='deprecated'),
@@ -98,8 +111,8 @@ class InsightsTest(unittest.TestCase):
                  note('unrelated-effect', links=[link('objection')]))
         result = insights.impact(self.root, 'old-choice')
         self.assertEqual({i['id'] for i in result['items']}, {'new-choice', 'objection'})
-        self.assertIn('ersetzt', result['text'])
-        self.assertIn('Widerspruch', result['text'])
+        self.assertIn('supersedes', result['text'])
+        self.assertIn('Contradiction', result['text'])
 
     def test_lessons_explain_paths_and_search_candidates_are_not_new_edges(self):
         self.put(note('demo-project', type='project', cluster='projects/demo', links=[link('other-project', 'related')]),
@@ -112,7 +125,7 @@ class InsightsTest(unittest.TestCase):
         found = {i['id']: i for i in result['items']}
         self.assertEqual(len(found['useful-lesson']['path']), 2)
         self.assertEqual(found['search-lesson']['path'], [])
-        self.assertIn('keine gespeicherte', found['search-lesson']['reasons'][0])
+        self.assertIn('no saved', found['search-lesson']['reasons'][0])
         self.assertNotIn('private-lesson', found)
         self.assertEqual(before, self.canonical())
 
@@ -162,7 +175,7 @@ class InsightsTest(unittest.TestCase):
         result = insights.changes(self.root, 'projects/demo', since='2026-01-02T00:00:00Z')
         self.assertEqual([i['id'] for i in result['items']], ['old-decision'])
         self.assertEqual(result['items'][0]['status'], 'deprecated')
-        self.assertIn('überholt', result['text'])
+        self.assertIn('deprecated', result['text'])
 
     def test_fresh_session_does_not_hide_changes_since_previous_visit(self):
         import sessions

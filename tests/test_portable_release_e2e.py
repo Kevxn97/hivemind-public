@@ -163,7 +163,7 @@ else:
                 value = json.loads(result.stdout)
                 if event == 'SessionStart':
                     offered = value['hookSpecificOutput']['additionalContext']
-                    session_id = re.search(r'HiveMind-Sitzung: ([0-9a-f]{32})', offered).group(1)
+                    session_id = re.search(r'HiveMind session: ([0-9a-f]{32})', offered).group(1)
                 else:
                     self.assertEqual(value['matched'], 1)
             self.cli('--root', self.vault, 'session-close', session_id, '--no-change', '--json')

@@ -86,15 +86,15 @@ class SessionRuntimeE2E(unittest.TestCase):
     def test_hooks_keep_runtime_identity_and_end_never_invents_a_handoff(self):
         for agent in ['codex', 'claude']:
             first = self.hook(agent=agent)
-            sid = re.search(r'HiveMind-Sitzung: ([a-f0-9]{32})', first['hookSpecificOutput']['additionalContext']).group(1)
+            sid = re.search(r'HiveMind session: ([a-f0-9]{32})', first['hookSpecificOutput']['additionalContext']).group(1)
             # Hosts may turn long hook output into a short preview plus a file.
             # Keep continuity instructions usable inside that preview.
             text = first['hookSpecificOutput']['additionalContext']
-            self.assertTrue(text.startswith('HiveMind-Sitzung: ' + sid))
+            self.assertTrue(text.startswith('HiveMind session: ' + sid))
             self.assertIn('session-context', text[:1000])
             self.assertIn('session-close --no-change', text[:1000])
             resumed = self.hook(agent=agent, source='compact')
-            self.assertIn('HiveMind-Sitzung: ' + sid, resumed['hookSpecificOutput']['additionalContext'])
+            self.assertIn('HiveMind session: ' + sid, resumed['hookSpecificOutput']['additionalContext'])
             before = self.run_cli('hive.py', ['check'])['events']
             self.hook(agent=agent, event='SessionEnd')
             ended = self.cli('session-status', sid)

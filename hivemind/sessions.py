@@ -418,27 +418,27 @@ def _validate_payload(payload, session):
 def _section(payload, items, sources):
     source = payload["source"]
     citation = "[^" + source["id"] + "]"
-    lines = [START, "## Aktuelle Übergabe", "",
-             "Beobachtung: " + source["observed_at"] + " · Evidenz: " +
-             hive.GERMAN_EVIDENCE[payload["evidence"]] + "." + citation]
+    lines = [START, "## Current handoff", "",
+             "Observed: " + source["observed_at"] + " · Evidence: " +
+             hive.EVIDENCE_LABELS[payload["evidence"]] + "." + citation]
     def cite(field):
         evidence = payload['field_sources'][field]
         return ('[^' + evidence['source_id'] + '] (' + evidence['observed_at'] + ' · ' +
-                hive.GERMAN_EVIDENCE[evidence['evidence']] + ')')
+                hive.EVIDENCE_LABELS[evidence['evidence']] + ')')
     if payload["project_state"].strip():
-        lines += ["", "### Projektstand", "", payload["project_state"].strip() + cite('project_state')]
+        lines += ["", "### Project status", "", payload["project_state"].strip() + cite('project_state')]
     if payload["decisions"]:
-        lines += ["", "### Entscheidungen", ""]
+        lines += ["", "### Decisions", ""]
         for item in payload["decisions"]:
-            label = "Vereinbart" if item["status"] == "agreed" else "Vorschlag, nicht beschlossen"
-            lines.append("- " + label + ": " + item["decision"].strip() + " Begründung: " + item["reason"].strip() + cite('decisions'))
+            label = "Agreed" if item["status"] == "agreed" else "Proposed, not agreed"
+            lines.append("- " + label + ": " + item["decision"].strip() + " Reason: " + item["reason"].strip() + cite('decisions'))
     if payload["open_questions"]:
-        lines += ["", "### Offene Fragen", ""] + ["- " + item.strip() + cite('open_questions') for item in payload["open_questions"]]
+        lines += ["", "### Open questions", ""] + ["- " + item.strip() + cite('open_questions') for item in payload["open_questions"]]
     if items:
-        lines += ["", "### Arbeitsschritte", ""]
+        lines += ["", "### Work items", ""]
         for item in items:
             lines.append('- ' + work_items.line(item) + (' — ' + item['reason'] if item['reason'] else '') +
-                         ' [^' + item['source_id'] + '] (' + item['observed_at'] + ' · ' + hive.GERMAN_EVIDENCE[item['evidence']] + ')')
+                         ' [^' + item['source_id'] + '] (' + item['observed_at'] + ' · ' + hive.EVIDENCE_LABELS[item['evidence']] + ')')
     referenced = {source['id'], *(item['source_id'] for item in items),
                   *(entry['source_id'] for entry in payload['field_sources'].values())}
     lines.append('')

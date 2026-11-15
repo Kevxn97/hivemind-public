@@ -166,7 +166,7 @@ def run(evidence_dir=None):
         stage('codex_session_start')
         first = hook('codex', 'synthetic-codex-runtime')
         text = first['hookSpecificOutput']['additionalContext']
-        match = re.search(r'HiveMind-Sitzung: ([a-f0-9]{32})', text)
+        match = re.search(r'(?:HiveMind session|HiveMind-Sitzung): ([a-f0-9]{32})', text)
         _require(match is not None, 'Codex SessionStart did not offer a session receipt')
         first_id = match.group(1)
         opened = cli('session-open', project, '--agent', 'codex', '--runtime-id', 'synthetic-codex-runtime', '--runtime-source', 'startup')
@@ -195,7 +195,7 @@ def run(evidence_dir=None):
         stage('claude_session_start')
         second = hook('claude', 'synthetic-claude-runtime')
         context = second['hookSpecificOutput']['additionalContext']
-        match = re.search(r'HiveMind-Sitzung: ([a-f0-9]{32})', context)
+        match = re.search(r'(?:HiveMind session|HiveMind-Sitzung): ([a-f0-9]{32})', context)
         _require(match is not None, 'Claude SessionStart did not offer a session receipt')
         second_id = match.group(1)
         _require(second_id != first_id, 'Fresh agent runtime reused the previous receipt')

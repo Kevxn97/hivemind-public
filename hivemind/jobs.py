@@ -49,11 +49,11 @@ def locked(root):
 def read(root):
     path = Path(root)/'.state/job.json'
     if not path.exists():
-        return {'status': 'idle', 'message': 'Noch kein Abgleich gestartet.'}
+        return {'status': 'idle', 'message': 'No sync has been started yet.'}
     value = json.loads(path.read_text())
     if not isinstance(value, dict) or value.get('status') not in {
             'idle', 'running', 'complete', 'partial', 'failed'}:
-        raise ValueError('Ungültiger Jobstatus; vorhandene Daten bleiben erhalten.')
+        raise ValueError('Invalid job status; existing data is preserved.')
     return value
 
 
@@ -113,7 +113,7 @@ def owned_run(root, value):
     if not active:
         return None
     if not isinstance(active, str) or Path(active).name != active:
-        raise ValueError('Ungültige aktive Quellenreservierung.')
+        raise ValueError('Invalid active source reservation.')
     path = Path(root)/'.state/runs'/active/'manifest.json'
     manifest = json.loads(path.read_text())
     if manifest.get('owner') == value.get('job_id') and value.get('job_id'):
@@ -125,10 +125,10 @@ def recover(root, value):
     """Only abort the source reservation this interrupted job owned."""
     run_id = owned_run(root, value)
     if run_id:
-        ingest.abort_run(root, run_id, 'Der lokale Sync-Prozess wurde unterbrochen.')
+        ingest.abort_run(root, run_id, 'The local sync process was interrupted.')
     return write(root, {**value, 'status': 'failed', 'finished_at': now(),
                         'start_failed': value.get('phase') in {'dispatching','preparing'} and not value.get('agent_started_at'),
-                        'message': 'Abgleich unterbrochen. Bereits gespeichertes Wissen bleibt erhalten; erneut starten.'})
+                        'message': 'Sync interrupted. Saved knowledge is preserved; start again.'})
 
 
 def public(value):
@@ -205,11 +205,11 @@ def start(root, *, plan=None, dispatch_id=None):
             binary = str(fallback) if fallback.is_file() else None
         value = {'status': 'running', 'job_id': uuid.uuid4().hex,
                  'dispatch_id':dispatch_id,'plan':plan,
-                 'started_at': now(), 'message': 'Quellen werden vorbereitet.',
+                 'started_at': now(), 'message': 'Preparing sources.',
                  'phase': 'dispatching'}
         if not binary:
             return public(write(root, {**value,'status': 'failed', 'finished_at': now(),
-                                      'start_failed':True,'message': 'Codex CLI ist nicht erreichbar.'}))
+                                      'start_failed':True,'message': 'Codex CLI is unavailable.'}))
         write(root, value)
         try:
             child = subprocess.Popen(
@@ -220,7 +220,7 @@ def start(root, *, plan=None, dispatch_id=None):
                 close_fds=True)
         except OSError:
             return public(write(root, {**value, 'status': 'failed', 'finished_at': now(),
-                                      'start_failed':True,'message': 'Der lokale Sync-Prozess konnte nicht starten.'}))
+                                      'start_failed':True,'message': 'The local sync process could not start.'}))
         value['pid'] = child.pid
         return public(write(root, value))
 
@@ -229,7 +229,7 @@ def update(root, job_id, **fields):
     with locked(root):
         value = read(root)
         if value.get('job_id') != job_id:
-            raise ValueError('Job wurde durch einen anderen Lauf ersetzt.')
+            raise ValueError('Job was replaced by another run.')
         return write(root, {**value, **fields})
 
 
@@ -243,22 +243,22 @@ def prompt_for(root, run_id):
         return prompt(root,run_id)
     return (
         '$hivemind-sync\n'
-        f'Bearbeite den bereits vorbereiteten HiveMind-Lauf {run_id}. '
-        f'Arbeitswurzel: {root}. '
-        f'Lies .state/runs/{run_id}/manifest.json und '
+        f'Process the prepared HiveMind run {run_id}. '
+        f'Working root: {root}. '
+        f'Read .state/runs/{run_id}/manifest.json and '
         '.agents/skills/hivemind-sync/SKILL.md. '
-        'Der Plan im Manifest begrenzt den Auftrag: ausschließlich seine lokalen IDs und Remote-Zeitfenster lesen. '
-        'Bei leeren windows keine Gmail-/Wispr-Tools aufrufen; der lokale Abgleich benötigt keine Remote-Quelle. '
-        f'Schreibe ausschließlich die abschließenden Quellenbelege nach .state/runs/{run_id}/receipts.json. '
-        'Der aufrufende Prozess validiert und beendet den Lauf. '
-        'Nicht selbst begin/finish/abort oder einen weiteren Job starten. '
-        'Kalender nur als vorhandenen operativen Snapshot bei Bedarf lesen; Aktualität selbst prüfen. '
-        'Kuratiere relevantes Wissen mit hive.py draft/apply. '
-        'Keine Projektimplementierung, Anweisungen, Skills, Konfiguration oder Berechtigungen ändern. '
-        'Keine Nachrichten senden, extern schreiben, veröffentlichen oder neue Dienste einrichten. '
-        'Fehlende Zugriffe wahrheitsgemäß als blocked dokumentieren; unabhängige Quellen fertigstellen. '
-        'Nutze keine Subagenten für diesen begrenzten Abgleich. '
-        'Schließe binnen 20 Minuten mit vollständigem Receipt-Umschlag ab.'
+        'The manifest plan limits the task: read only its local IDs and remote time windows. '
+        'If windows are empty, do not call Gmail/Wispr tools; local sync needs no remote source. '
+        f'Write only the final source receipts to .state/runs/{run_id}/receipts.json. '
+        'The calling process validates and finishes the run. '
+        'Do not call begin/finish/abort or start another job yourself. '
+        'Read Calendar only from its existing operational snapshot when needed; check its freshness. '
+        'Curate relevant knowledge with hive.py draft/apply. '
+        'Do not change project implementation, instructions, skills, configuration, or permissions. '
+        'Do not send messages, write externally, publish, or set up new services. '
+        'Report missing access truthfully as blocked; finish independent sources. '
+        'Do not use subagents for this bounded sync. '
+        'Finish within 20 minutes with a complete receipt envelope.'
     )
 
 
@@ -284,7 +284,7 @@ def agent_guard(root, run_id, binary, lease_fd, max_seconds):
     child = None
 
     def interrupted(signum, frame):
-        raise InterruptedError('Agent-Aufruf wurde unterbrochen.')
+        raise InterruptedError('Agent invocation was interrupted.')
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
@@ -330,7 +330,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
     failure = None
 
     def interrupted(signum, frame):
-        raise InterruptedError('Abgleich wurde unterbrochen.')
+        raise InterruptedError('Sync was interrupted.')
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
@@ -354,7 +354,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
             snapshot = ingest.refresh_calendar(root)
             calendar_ok = snapshot.get('status') == 'ok'
         update(root, job_id, phase='curating',
-               message='Codex prüft ausschließlich die Quellen des vorbereiteten Abgleichplans.')
+               message='Codex is checking only the sources in the prepared sync plan.')
         # The guard inherits the existing lease atomically with process creation.
         # It survives worker SIGKILL and is solely responsible for bounding Codex.
         child = subprocess.Popen(
@@ -374,13 +374,13 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
             pass
         code = child.wait()
         if code == 124:
-            raise ValueError('Zeitlimit erreicht. Bereits kuratiertes Wissen bleibt erhalten.')
+            raise ValueError('Time limit reached. Already curated knowledge is preserved.')
         if code:
-            raise ValueError(f'Codex wurde mit Fehlercode {code} beendet; kein vollständiger Quellenbeleg.')
-        update(root, job_id, phase='validating', message='Quellenbelege und Wissensintegrität werden geprüft.')
+            raise ValueError(f'Codex exited with error code {code}; no complete source receipt.')
+        update(root, job_id, phase='validating', message='Validating source receipts and knowledge integrity.')
         path = root/'.state/runs'/run_id/'receipts.json'
         if not path.is_file() or path.is_symlink() or path.stat().st_size > 2_000_000:
-            raise ValueError('Codex hat keinen gültigen abschließenden Quellenbeleg erstellt.')
+            raise ValueError('Codex did not produce a valid final source receipt.')
         receipts = json.loads(path.read_text())
         result = ingest.finish_run(root, run_id, receipts)
         finished = True
@@ -388,9 +388,9 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
         if state == 'complete' and not calendar_ok:
             state = 'partial'
         messages = {
-            'complete': 'Abgleich abgeschlossen. Alle vorbereiteten Quellen sind belegt und das Wissen ist geprüft.',
-            'partial': 'Teilweise abgeschlossen. Einzelne Quellen oder der Kalender sind noch offen; Details stehen bei den Quellen.',
-            'failed': 'Abgleich nicht vollständig prüfbar. Quellenstände bleiben entsprechend unverändert.'}
+            'complete': 'Sync complete. All prepared sources have receipts and knowledge has been checked.',
+            'partial': 'Partially complete. Some sources or the calendar remain pending; see source details.',
+            'failed': 'Sync could not be fully verified. Source status remains unchanged accordingly.'}
         update(root, job_id, status=state, phase='finished', finished_at=now(),
                calendar_status='ok' if calendar_ok else 'unavailable',
                message=messages[state])
@@ -419,7 +419,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
             owned = owned_run(root, {'job_id': job_id})
             try:
                 if owned:
-                    ingest.abort_run(root, owned, 'Sync ohne vollständig validierte Quellenbelege beendet.')
+                    ingest.abort_run(root, owned, 'Sync ended without fully validated source receipts.')
             except ValueError:
                 # If it remains ours, leave the job running for explicit recovery.
                 if owned_run(root, {'job_id': job_id}):
@@ -427,7 +427,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
         # Never expose terminal failure before source reservation cleanup completes.
         if failure is not None and not guard_pending:
             update(root, job_id, status='failed', phase='finished',
-                   finished_at=now(), message='Abgleich fehlgeschlagen: '+failure)
+                   finished_at=now(), message='Sync failed: '+failure)
         runner.close()
 
 

@@ -47,14 +47,14 @@ def _scope(root, target):
         import project_context
     result = project_context.resolve_project(root, target)
     if result is None:
-        raise ValueError('Kein eindeutiges Projekt. Ordner registrieren oder projects/<id> verwenden.')
+        raise ValueError('No unique project. Register a folder or use projects/<id>.')
     return result['cluster']
 
 
 def _excerpt(body, words=120):
     # Prefer an explicitly authored rationale, never synthesize one from links.
     blocks = re.split(r'(?m)(?=^#{1,6} )', body)
-    chosen = next((b for b in blocks if re.match(r'#{1,6}\s+.*(?:Begründung|Rationale|Warum)', b, re.I)), body)
+    chosen = next((b for b in blocks if re.match(r'#{1,6}\s+.*(?:Begründung|Rationale|Warum|Reason|Why)', b, re.I)), body)
     text = chosen.strip()
     return ' '.join(text.split()[:words]) + (' …' if len(text.split()) > words else '')
 
@@ -82,8 +82,8 @@ def _edge(origin, edge, direction):
 
 
 def _path_text(path):
-    labels = {'depends_on': 'hängt ab von', 'related': 'verknüpft mit', 'about': 'bezieht sich auf',
-              'supersedes': 'ersetzt', 'contradicts': 'widerspricht'}
+    labels = {'depends_on': 'depends on', 'related': 'linked to', 'about': 'about',
+              'supersedes': 'supersedes', 'contradicts': 'contradicts'}
     return ' / '.join(f"{e['origin']} —{labels[e['relation']]}→ {e['target']}" +
                       (f" ({e['reason']})" if e['reason'] else '') for e in path)
 
@@ -91,42 +91,42 @@ def _path_text(path):
 def _render(title, introduction, items):
     lines = [title, '', introduction, '']
     for item in items:
-        status = {'stable': 'angenommen', 'draft': 'Entwurf', 'deprecated': 'überholt'}[item['status']]
-        evidence = hive.GERMAN_EVIDENCE[item['evidence']]
-        freshness = 'Prüfung fällig' if item['freshness'] == 'stale' else 'im Prüfzeitraum'
+        status = {'stable': 'stable', 'draft': 'draft', 'deprecated': 'deprecated'}[item['status']]
+        evidence = hive.EVIDENCE_LABELS[item['evidence']]
+        freshness = 'review due' if item['freshness'] == 'stale' else 'within review period'
         lines += [item['title'] + ' [' + item['id'] + ']',
-                  f"Notiz: {status} · {evidence} · {freshness} · Revision {item['revision'][:12]}"]
+                  f"Note: {status} · {evidence} · {freshness} · Revision {item['revision'][:12]}"]
         if 'handoff_evidence' in item:
-            lines.append('Aktuelle Übergabe: ' + hive.GERMAN_EVIDENCE.get(item['handoff_evidence'], 'nicht eingeordnet') +
-                         ' · Beobachtung ' + str(item.get('handoff_observed_at') or 'nicht datiert') +
-                         ' · Quelle ' + str(item.get('handoff_source_id') or 'nicht zugeordnet') +
-                         '. Der Notizstatus verifiziert diese Übergabe nicht.')
+            lines.append('Current handoff: ' + hive.EVIDENCE_LABELS.get(item['handoff_evidence'], 'unclassified') +
+                         ' · observed ' + str(item.get('handoff_observed_at') or 'undated') +
+                         ' · source ' + str(item.get('handoff_source_id') or 'unassigned') +
+                         '. The note status does not verify this handoff.')
         if item.get('reasons'):
             lines.append(' / '.join(item['reasons']))
         if item.get('path'):
-            lines.append('Belegter Pfad: ' + _path_text(item['path']))
+            lines.append('Documented path: ' + _path_text(item['path']))
         if item.get('excerpt'):
             lines.append(item['excerpt'])
         else:
             lines.append(item['summary'])
         if item.get('event'):
             event = item['event']
-            lines.append('Änderung ' + event['at'] + ': ' + event['reason'])
-            lines.append('Ereignis: ' + event['id'] + ' · ' + event['actor'])
-            lines.append('Kontext: ' + event['context'])
+            lines.append('Change ' + event['at'] + ': ' + event['reason'])
+            lines.append('Event: ' + event['id'] + ' · ' + event['actor'])
+            lines.append('Context: ' + event['context'])
         cited = set(re.findall(r'\[\^([^\]]+)\]', item.get('excerpt', '')))
         if item.get('handoff_source_id'):
             cited.add(item['handoff_source_id'])
         ordered_sources = sorted(item['sources'], key=lambda source:
                                  (source['id'] != item.get('handoff_source_id'), source['id'] not in cited))
         for source in ordered_sources[:3]:
-            lines.append('Quelle: ' + source['title'] + ' · ' + source['resource'])
+            lines.append('Source: ' + source['title'] + ' · ' + source['resource'])
         if len(item['sources']) > 3:
-            lines.append(f"Weitere {len(item['sources']) - 3} Quellen über hive note {item['id']}.")
+            lines.append(f"{len(item['sources']) - 3} more sources via hive note {item['id']}.")
         lines.append('')
     if not items:
-        lines.append('Keine passenden belegten Einträge.')
-    lines.append('Gespeicherte Aussagen und Beziehungen; kein Nachweis des aktuellen Live-Zustands.')
+        lines.append('No matching documented entries.')
+    lines.append('Stored claims and relationships; not proof of the current live state.')
     return '\n'.join(lines) + '\n'
 
 
@@ -136,7 +136,7 @@ def explain(root, ident, limit=5):
     records, _ = _read(root)
     visible = _allowed(records, include_history=True)
     if ident not in visible:
-        raise ValueError('Notiz fehlt oder ist als persönlich markiert: ' + ident)
+        raise ValueError('Note missing or marked as personal: ' + ident)
     selected = _item(visible[ident], excerpt=_excerpt(visible[ident][0]['body']), path=[])
     links = []
     for origin, (note, _, _) in visible.items():
@@ -153,8 +153,8 @@ def explain(root, ident, limit=5):
             continue
         seen.add(other)
         items.append(_item(visible[other], path=[edge], excerpt=_excerpt(visible[other][0]['body'], 70)))
-    title = 'WARUM / ' + selected['title']
-    introduction = 'Dokumentierter Text und Verknüpfungen. Eine Verknüpfung allein beweist keine Entscheidungsursache.'
+    title = 'WHY / ' + selected['title']
+    introduction = 'Documented text and links. A link alone does not prove why a decision was made.'
     return {'kind': 'explain', 'title': title, 'subject': selected['id'], 'items': items,
             'text': _render(title, introduction, items)}
 
@@ -167,7 +167,7 @@ def impact(root, ident, limit=5, depth=4):
     records, _ = _read(root)
     all_visible = _allowed(records, include_history=True)
     if ident not in all_visible:
-        raise ValueError('Notiz fehlt oder ist als persönlich markiert: ' + ident)
+        raise ValueError('Note missing or marked as personal: ' + ident)
     visible = _allowed(records)
     visible[ident] = all_visible[ident]
     incoming = {}
@@ -186,7 +186,7 @@ def impact(root, ident, limit=5, depth=4):
             seen.add(origin)
             next_path = path + [_edge(origin, edge, 'incoming')]
             items.append(_item(visible[origin], path=next_path,
-                               reasons=['Hängt direkt oder mittelbar von der ausgewählten Notiz ab.']))
+                               reasons=['Depends directly or indirectly on the selected note.']))
             queue.append((origin, next_path))
             if len(items) >= limit:
                 break
@@ -199,12 +199,12 @@ def impact(root, ident, limit=5, depth=4):
             if other not in all_visible or other in seen or len(items) >= limit:
                 continue
             seen.add(other)
-            label = ('Dokumentierter Widerspruch; Auflösung prüfen.' if edge['relation'] == 'contradicts' else
-                     'Diese Notiz ersetzt die ausgewählte Notiz.' if edge['target'] == ident else
-                     'Diese Notiz wird durch die ausgewählte Notiz ersetzt.')
+            label = ('Contradiction documented; check its resolution.' if edge['relation'] == 'contradicts' else
+                     'This note supersedes the selected note.' if edge['target'] == ident else
+                     'This note is superseded by the selected note.')
             items.append(_item(all_visible[other], path=[_edge(origin, edge, 'outgoing' if origin == ident else 'incoming')], reasons=[label]))
-    title = 'AUSWIRKUNG / ' + all_visible[ident][0]['title']
-    introduction = 'Mögliche Betroffenheit: Diese Notizen hängen von der ausgewählten Notiz ab oder stehen mit ihr im Widerspruch bzw. ersetzen sie. Keine automatische Zustandsänderung.'
+    title = 'IMPACT / ' + all_visible[ident][0]['title']
+    introduction = 'Possible impact: these notes depend on, contradict, or supersede the selected note. No state is changed automatically.'
     return {'kind': 'impact', 'title': title, 'subject': ident, 'items': items, 'depth': depth,
             'text': _render(title, introduction, items)}
 
@@ -214,12 +214,12 @@ def lessons(root, target='.', task='', limit=5):
     _limit(limit)
     scope = _scope(root, target)
     if scope is None:
-        raise ValueError('Erfahrungen benötigen ein konkretes Projekt.')
+        raise ValueError('Lessons require a specific project.')
     records, _ = _read(root)
     visible = _allowed(records)
     starts = sorted(i for i, r in visible.items() if hive.cluster_for(r[0]) == scope)
     if not starts:
-        raise ValueError('Unbekanntes oder leeres Projekt: ' + scope)
+        raise ValueError('Unknown or empty project: ' + scope)
     neighbors = {}
     for origin, (note, _, _) in visible.items():
         for edge in note['links']:
@@ -252,11 +252,11 @@ def lessons(root, target='.', task='', limit=5):
     else:
         import knowledge
     items = [_item(visible[i], path=candidates[i], excerpt=_excerpt(knowledge.render(visible[i][0]) + '\n\n' + visible[i][0]['body']),
-                   reasons=['Erfahrung aus diesem Projekt.' if i in starts else 'Belegte Verbindung zum Projekt.' if candidates[i] else 'Suchkandidat; keine gespeicherte Projektverbindung.'])
+                   reasons=['Lesson from this project.' if i in starts else 'Documented connection to the project.' if candidates[i] else 'Search candidate; no saved project connection.'])
              for i in order[:limit]]
-    title = 'ERFAHRUNGEN / ' + scope
+    title = 'LESSONS / ' + scope
     return {'kind': 'lessons', 'title': title, 'cluster': scope, 'task': task, 'items': items,
-            'text': _render(title, 'Übertragbarkeit anhand der Quelle prüfen; keine neue Beziehung wurde gespeichert.', items)}
+            'text': _render(title, 'Check applicability against the source; no new relationship was saved.', items)}
 
 
 def changes(root, target='.', since=None, limit=5, session_id=None):
@@ -270,7 +270,7 @@ def changes(root, target='.', since=None, limit=5, session_id=None):
     records, history = _read(root)
     visible = {i: r for i, r in _allowed(records, include_history=True).items() if scope is None or hive.cluster_for(r[0]) == scope}
     if scope is not None and not visible:
-        raise ValueError('Unbekanntes oder leeres Projekt: ' + scope)
+        raise ValueError('Unknown or empty project: ' + scope)
     baseline = 'explicit' if since else 'recent_window'
     if since is None and scope:
         if __package__:
@@ -307,26 +307,26 @@ def changes(root, target='.', since=None, limit=5, session_id=None):
             continue
         reasons, priority = [], 9
         if not hive.active(note):
-            reasons.append('Seit dem Vergleichsstand archiviert oder als überholt markiert.')
+            reasons.append('Archived or marked deprecated since the baseline.')
         if hive.active(note) and note['evidence'] == 'disputed':
-            reasons.append('Widersprüchliche Evidenz klären.'); priority = 0
+            reasons.append('Resolve disputed evidence.'); priority = 0
         if hive.active(note) and note['type'] == 'decision' and note['status'] == 'draft':
-            reasons.append('Entscheidung ist noch ein Entwurf.'); priority = min(priority, 1)
+            reasons.append('Decision is still a draft.'); priority = min(priority, 1)
         if hive.active(note) and hive.freshness(note) == 'stale':
-            reasons.append('Prüftermin überschritten.'); priority = min(priority, 2)
+            reasons.append('Review overdue.'); priority = min(priority, 2)
         if ident in recent:
-            reasons.append('Seit dem Vergleichsstand geändert.'); priority = min(priority, 3)
+            reasons.append('Changed since the baseline.'); priority = min(priority, 3)
         # Explicit authored heading is a cue to inspect, never a fabricated blocking task.
-        if hive.active(note) and re.search(r'^#{1,6}\s+.*(?:offene Fragen|offene Punkte|nächste Schritte)', note['body'], re.I | re.M):
-            reasons.append('Enthält einen Abschnitt mit nächsten Schritten oder offenen Fragen.'); priority = min(priority, 4)
+        if hive.active(note) and re.search(r'^#{1,6}\s+.*(?:offene Fragen|offene Punkte|nächste Schritte|open questions|open items|next steps)', note['body'], re.I | re.M):
+            reasons.append('Contains a section with next steps or open questions.'); priority = min(priority, 4)
         if reasons:
             candidates.append((priority, ident, _item(record, reasons=reasons, event=recent.get(ident))))
     candidates.sort(key=lambda row: (row[0], -(hive.timestamp(row[2]['event']['at']).timestamp() if row[2]['event'] else 0), row[1]))
     items = [row[2] for row in candidates[:limit]]
-    title = 'ÄNDERUNGEN / ' + (scope or 'Alle Arbeitskontexte')
-    label = {'explicit': 'Gewählter Vergleichsstand', 'recent_window': 'Ohne bisherigen Sitzungsstand: letzte sieben Tage',
-             'last_context_offered': 'Seit zuletzt angebotenem Projektkontext',
-             'previous_context_offered': 'Seit dem Projektkontext vor dieser Sitzung'}[baseline]
+    title = 'CHANGES / ' + (scope or 'All work contexts')
+    label = {'explicit': 'Selected baseline', 'recent_window': 'No prior session baseline: last seven days',
+             'last_context_offered': 'Since project context was last offered',
+             'previous_context_offered': 'Since the project context before this session'}[baseline]
     return {'kind': 'changes', 'title': title, 'cluster': scope, 'since': since, 'baseline': baseline,
             'total_candidates': len(candidates), 'items': items,
-            'text': _render(title, label + ': ' + since + '. Zusätzlich offene und fällige Einträge.', items)}
+            'text': _render(title, label + ': ' + since + '. Also includes open and due entries.', items)}

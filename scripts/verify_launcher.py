@@ -14,7 +14,7 @@ class CliE2E(unittest.TestCase):
  def tearDown(self):self.temp.cleanup()
  def cli(self,*args):return subprocess.run([sys.executable,str(BASE/'launcher.py'),'--root',str(self.root),*args],capture_output=True,text=True,timeout=10)
  def test_background_pause_and_failure_are_visible_even_when_process_lives(self):
-  states=[({'status':'paused','message':'Automatik ausgeschaltet'},'pausiert'),({'status':'degraded','message':'Konfiguration beschädigt'},'gestört'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'Quellenpause')]
+  states=[({'status':'paused','message':'Automatik ausgeschaltet'},'paused'),({'status':'degraded','message':'Konfiguration beschädigt'},'degraded'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'source backoff')]
   for state,expected in states:
    code="import sys;sys.path.insert(0,sys.argv[1]);import launcher,background;background.status=lambda root:"+repr({'daemon_running':True,**state})+";print(launcher.plain_status(launcher.snapshot(__import__('pathlib').Path(sys.argv[2]))))"
    p=subprocess.run([sys.executable,'-c',code,str(BASE),str(self.root)],capture_output=True,text=True,timeout=10)
@@ -42,7 +42,7 @@ class CliE2E(unittest.TestCase):
   p=self.cli('search','Zauberwort');self.assertEqual(p.returncode,0,p.stderr)
   self.assertEqual(json.loads((self.root/'.state/search-misses.jsonl').read_text().splitlines()[-1])['query'],'Zauberwort')
  def test_retired_web_entry_refuses_to_start(self):
-  p=self.cli('--serve');self.assertNotEqual(p.returncode,0);self.assertIn('Terminal',p.stderr+p.stdout)
+  p=self.cli('--serve');self.assertNotEqual(p.returncode,0);self.assertIn('terminal',(p.stderr+p.stdout).lower())
  def test_positional_shortcuts_and_legacy_graph_are_terminal_only(self):
   p=self.cli('search','testbarer','--json');self.assertEqual(p.returncode,0,p.stderr);self.assertEqual(json.loads(p.stdout)[0]['id'],'fixture')
   p=self.cli('--graph','--plain');self.assertEqual(p.returncode,0,p.stderr);self.assertNotIn('http://',p.stdout)

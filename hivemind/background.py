@@ -67,13 +67,13 @@ def private_folder(root):
 
 def config(root):
     path=Path(root)/'config/background.json'
-    if not path.is_file():raise ValueError('config/background.json fehlt; Automatik bleibt aus.')
+    if not path.is_file():raise ValueError('config/background.json is missing; automation remains off.')
     value=json.loads(path.read_text())
     if not isinstance(value,dict) or value.get('version')!=1 or type(value.get('enabled'))!=bool:
-        raise ValueError('Ungültige Hintergrundkonfiguration; Automatik bleibt aus.')
+        raise ValueError('Invalid background configuration; automation remains off.')
     for key,(low,high) in BOUNDS.items():
         if type(value.get(key))!=int or not low<=value[key]<=high:
-            raise ValueError('Ungültige Hintergrundkonfiguration: '+key)
+            raise ValueError('Invalid background configuration: '+key)
     return value
 
 
@@ -82,7 +82,7 @@ def read(root):
     if not path.exists():return {'schema_version':1,'status':'inactive','local':{}}
     value=json.loads(path.read_text())
     if not isinstance(value,dict) or value.get('schema_version')!=1 or not isinstance(value.get('local'),dict):
-        raise ValueError('Ungültiger Hintergrundstatus; vorhandene Daten bleiben erhalten.')
+        raise ValueError('Invalid background status; existing data is preserved.')
     return value
 
 
@@ -224,7 +224,7 @@ def narrow_unstarted_plan(root,intent,report,deps):
     plan=intent['plan'];remaining=[]
     configured=set(local)|{row['id'] for row in ingest.config(root).get('remote',[])}
     if set(plan['source_ids'])-configured:
-        intent.update(status='cancelled',message='Nicht gestarteter Auftrag durch geänderte Quellenauswahl überholt.')
+        intent.update(status='cancelled',message='Unstarted job superseded by a changed source selection.')
         return
     for ident in plan['source_ids']:
         if ident in plan['windows']:
@@ -234,7 +234,7 @@ def narrow_unstarted_plan(root,intent,report,deps):
             continue
         remaining.append(ident)
     if not remaining:
-        intent.update(status='superseded',message='Vorbereiteter Auftrag durch unabhängig abgeschlossene Quellenarbeit abgedeckt.')
+        intent.update(status='superseded',message='Prepared job covered by independently completed source work.')
     elif remaining!=plan['source_ids']:
         intent['plan']=ingest.validate_plan(root,{**plan,'source_ids':remaining,
                           'windows':{ident:window for ident,window in plan['windows'].items() if ident in remaining}})
@@ -250,22 +250,22 @@ def launch_dispatch(root,state,intent,at,deps,cfg):
         launched=deps.start(root,plan=intent['plan'],dispatch_id=intent['id'])
     except (OSError,ValueError,RuntimeError):
         state.update(status='degraded',backoff_until=intent['retry_after'],
-                     message='Jobstart nicht bestätigt; vorbereiteter Abgleich wird nach der Quellenpause erneut geprüft.')
+                     message='Job start not confirmed; the prepared sync will be checked again after source backoff.')
         return
     if launched.get('dispatch_id')!=intent['id']:
         # A manual job won the jobs lock. Preserve our unspent intent.
-        state['message']='Ein anderer Abgleich läuft; der vorbereitete Auftrag wartet.'
+        state['message']='Another sync is running; the prepared job is waiting.'
         return
     if launched.get('start_failed'):
         state.update(status='degraded',backoff_until=intent['retry_after'],
-                     message='Job konnte nicht starten; gezielter Neuversuch nach der Quellenpause.')
+                     message='Job could not start; a targeted retry follows source backoff.')
         return
     accept_dispatch(state,intent,launched)
-    state['message']='Begrenzter Abgleich gestartet.'
+    state['message']='Bounded sync started.'
     if launched.get('status') in ('failed','partial'):
         state['backoff_until']=intent['retry_after']
         state['last_failure_at']=stamp(at)
-        state['failure_reason']='Abgleich unvollständig; kein blindes Wiederholen.'
+        state['failure_reason']='Sync incomplete; no blind retry.'
 
 
 def meaningful(root,row):
@@ -277,10 +277,10 @@ def meaningful(root,row):
 
 
 def _tick(root,state,cfg,at,deps):
-    state.update(status='running',updated_at=stamp(at),message='Hintergrund aktiv; kein Abgleich nötig.')
+    state.update(status='running',updated_at=stamp(at),message='Background active; no sync needed.')
     state.pop('error',None)
     if not cfg['enabled']:
-        state.update(status='paused',message='Automatik in config/background.json ausgeschaltet.')
+        state.update(status='paused',message='Automation is disabled in config/background.json.')
         return save(root,state)
     if (root/'.hivemind.json').is_file():
         if __package__:
@@ -299,7 +299,7 @@ def _tick(root,state,cfg,at,deps):
             state.update(message='Background active; source sync disabled. Weekly review follows its schedule.')
             return save(root,state)
     if not (root/'config/sources.json').is_file():
-        raise ValueError('config/sources.json fehlt; automatischer Abgleich bleibt aus.')
+        raise ValueError('config/sources.json is missing; automatic sync remains off.')
     source_config=ingest.config(root)
     # One serialized tick refreshes local hashes and observes existing independent work.
     report=deps.scan(root);state['last_scan_at']=stamp(at)
@@ -316,7 +316,7 @@ def _tick(root,state,cfg,at,deps):
     if job.get('status') in ('failed','partial') and state.get('observed_terminal')!=terminal:
         state['backoff_until']=stamp(at+timedelta(seconds=cfg['failure_backoff_seconds']))
         state['last_failure_at']=stamp(at)
-        state['failure_reason']='Abgleich unvollständig; mögliche Quellen-/Providergrenze. Kein blindes Wiederholen.'
+        state['failure_reason']='Sync incomplete; a source or provider limit may apply. No blind retry.'
     if job.get('status') in ('complete','failed','partial'):state['observed_terminal']=terminal
     if 'remote_attempt_dates' not in state:
         state['remote_attempt_dates']={row['id']:state['daily_attempt_date'] for row in source_config.get('remote',[]) if state.get('daily_attempt_date')}
@@ -367,19 +367,19 @@ def _tick(root,state,cfg,at,deps):
     daily=bool(daily_ids)
     retry=bool(intent and intent.get('status')=='prepared')
     local_due=(bool(changed) and fingerprint!=local.get('attempted_fingerprint') and elapsed(at,local.get('changed_since'))>=cfg['debounce_seconds'])
-    if job.get('status')=='running':state['message']='Ein bestehender Abgleich läuft; der Hintergrund startet keinen zweiten.'
+    if job.get('status')=='running':state['message']='A sync is already running; the background service will not start another.'
     elif not state.get('integrity',{}).get('valid'):
-        state.update(status='degraded',message='Wissensintegrität prüfen; automatischer Abgleich pausiert.')
+        state.update(status='degraded',message='Check knowledge integrity; automatic sync is paused.')
     elif state.get('backoff_until') and at<parse_time(state['backoff_until']):
         if retry:state['status']='degraded'
-        state['message']=('Jobstart nicht bestätigt; Neuversuch frühestens ' if retry else 'Quellenpause nach unvollständigem Abgleich; kein automatischer Neuversuch vor ')+state['backoff_until']
+        state['message']=('Job start not confirmed; retry no earlier than ' if retry else 'Source backoff after incomplete sync; no automatic retry before ')+state['backoff_until']
     elif elapsed(at,state.get('last_auto_start_at'))<cfg['min_sync_seconds']:
-        state['message']='Automatik wartet auf den Mindestabstand von 30 Minuten.'
+        state['message']='Automation is waiting for the minimum 30-minute interval.'
     elif (daily or local_due or retry) and hasattr(deps,'awake') and not deps.awake(root):
         # Neither the day nor the input counts as attempted; the next full wake dispatches.
-        state['message']='Der Mac ist nur kurz zur Wartung wach; der Abgleich wartet auf den nächsten vollen Wachzustand.'
+        state['message']='The Mac is briefly awake for maintenance; sync waits until it is fully awake.'
     elif retry and at<parse_time(intent['retry_after']):
-        state.update(status='degraded',message='Unbestätigter Jobstart wartet auf die begrenzte Wiederaufnahme.')
+        state.update(status='degraded',message='Unconfirmed job start is waiting for bounded recovery.')
     elif daily or local_due or retry:
         # Fresh integrity immediately before dispatch; jobs enforces its own writer lease.
         if not need_check:
@@ -389,7 +389,7 @@ def _tick(root,state,cfg,at,deps):
                 state['integrity']={'valid':True,'checked_at':stamp(at),'signature':signature}
             except (OSError,ValueError,RuntimeError):
                 state['integrity']={'valid':False,'checked_at':stamp(at),'signature':signature}
-                state.update(status='degraded',message='Wissensintegrität prüfen; automatischer Abgleich pausiert.')
+                state.update(status='degraded',message='Check knowledge integrity; automatic sync is paused.')
                 return save(root,state)
         if not retry:
             dispatch_id=uuid.uuid4().hex
@@ -401,7 +401,7 @@ def _tick(root,state,cfg,at,deps):
             state['dispatch']=intent
         launch_dispatch(root,state,intent,at,deps,cfg)
     elif failures:
-        state.update(status='degraded',message='Mindestens eine ausgewählte lokale Quelle ist nicht verfügbar.')
+        state.update(status='degraded',message='At least one selected local source is unavailable.')
     state['daily_hour']=cfg['daily_hour'];state['scan_seconds']=cfg['scan_seconds']
     return save(root,state)
 
@@ -414,7 +414,7 @@ def tick(root,*,at=None,deps=None):
         state=read(root)
         try:return _tick(root,state,config(root),at,deps)
         except (OSError,ValueError,RuntimeError) as exc:
-            state.update(status='degraded',updated_at=stamp(at),error=str(exc)[:500],message='Hintergrund wartet auf die Behebung eines lokalen Fehlers; kein zusätzlicher Abgleich gestartet.')
+            state.update(status='degraded',updated_at=stamp(at),error=str(exc)[:500],message='Background is waiting for a local error to be resolved; no extra sync was started.')
             return save(root,state)
 
 
@@ -436,7 +436,7 @@ def run(root,*,deps=None):
                 deadline=time.monotonic()+seconds
                 while not stopping and time.monotonic()<deadline:time.sleep(min(1,max(.01,deadline-time.monotonic())))
             try:
-                value=read(root);value.update(status='stopped',updated_at=stamp(current()),message='Hintergrund beendet; unabhängig laufende Abgleiche bleiben aktiv.');save(root,value)
+                value=read(root);value.update(status='stopped',updated_at=stamp(current()),message='Background stopped; independently running syncs remain active.');save(root,value)
             except (OSError,ValueError):pass
         finally:
             for sig,handler in previous.items():signal.signal(sig,handler)
@@ -472,10 +472,10 @@ def install(root,*,launchagents=None,runner=None,uid=None):
         if path.is_symlink():raise ValueError('LaunchAgent plist must not be a symlink')
         temporary=path.with_suffix('.plist.tmp');temporary.write_bytes(data);temporary.chmod(0o600);os.replace(temporary,path)
     enabled=_launch(runner,['/bin/launchctl','enable',target])
-    if enabled.returncode!=0:raise RuntimeError('launchctl konnte den Benutzer-Hintergrunddienst nicht aktivieren.')
+    if enabled.returncode!=0:raise RuntimeError('launchctl could not enable the user background service.')
     if not loaded:
         result=_launch(runner,['/bin/launchctl','bootstrap',domain,str(path)])
-        if result.returncode!=0:raise RuntimeError('launchctl konnte den Benutzer-Hintergrunddienst nicht starten.')
+        if result.returncode!=0:raise RuntimeError('launchctl could not start the user background service.')
     return {'installed':True,'running':True,'label':LABEL,'plist':str(path),'domain':domain}
 
 
@@ -493,10 +493,10 @@ def uninstall(root,*,launchagents=None,runner=None,uid=None):
     result=_launch(runner,['/bin/launchctl','bootout',target])
     if result.returncode!=0:
         loaded=_launch(runner,['/bin/launchctl','print',target])
-        if loaded.returncode==0:raise RuntimeError('Hintergrunddienst konnte nicht beendet werden; Plist bleibt erhalten.')
+        if loaded.returncode==0:raise RuntimeError('Background service could not be stopped; the plist is preserved.')
     if path.is_symlink():raise ValueError('LaunchAgent plist must not be a symlink')
     path.unlink(missing_ok=True)
-    return {'installed':False,'running':False,'label':LABEL,'message':'Hintergrunddienst entfernt; laufende Abgleiche bleiben unabhängig aktiv.'}
+    return {'installed':False,'running':False,'label':LABEL,'message':'Background service removed; running syncs remain active independently.'}
 
 
 def main():

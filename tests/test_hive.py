@@ -202,7 +202,7 @@ class HiveTest(unittest.TestCase):
         self.assertEqual((result["cluster"], result["folder"]), ("projects/demo", str(repo.resolve())))
         self.assertIn("Demo-Projekt", result["text"])
         self.assertIn("Positionen werden geprüft", result["text"])
-        self.assertIn("überschritten", result["text"])  # the fixture's review date has passed
+        self.assertIn("overdue", result["text"])  # the fixture's review date has passed
 
     def test_brief_stays_silent_without_a_unique_project_folder(self):
         base = Path(self.temp.name)

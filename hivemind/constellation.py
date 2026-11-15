@@ -26,11 +26,11 @@ else:
 LEVELS = 16
 REVERSE = 32
 DOTS = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
-AREAS = {'projects': 'PROJEKTE', 'work': 'ARBEIT', 'personal': 'PERSÖNLICH', 'people': 'PERSONEN', 'knowledge': 'WISSEN', 'system': 'BETRIEB'}
+AREAS = {'projects': 'PROJECTS', 'work': 'WORK', 'personal': 'PERSONAL', 'people': 'PEOPLE', 'knowledge': 'KNOWLEDGE', 'system': 'SYSTEM'}
 AXES = {'projects': (1, 0, 0), 'work': (0, 0, 1), 'personal': (-1, 0, 0), 'people': (0, 1, 0), 'knowledge': (0, -1, 0), 'system': (0, 0, -1)}
-TYPES = {'person': 'Person', 'preference': 'Präferenz', 'work': 'Arbeit', 'project': 'Projekt', 'decision': 'Entscheidung', 'lesson': 'Erfahrung', 'system': 'System'}
-EVIDENCE = {'confirmed': 'bestätigt', 'reported': 'berichtet', 'inferred': 'abgeleitet', 'disputed': 'umstritten'}
-RELATIONS = {'about': 'über', 'related': 'verwandt', 'depends_on': 'hängt ab von', 'supersedes': 'ersetzt', 'contradicts': 'widerspricht'}
+TYPES = {'person': 'Person', 'preference': 'Preference', 'work': 'Work', 'project': 'Project', 'decision': 'Decision', 'lesson': 'Lesson', 'system': 'System'}
+EVIDENCE = {'confirmed': 'confirmed', 'reported': 'reported', 'inferred': 'inferred', 'disputed': 'disputed'}
+RELATIONS = {'about': 'about', 'related': 'related', 'depends_on': 'depends on', 'supersedes': 'supersedes', 'contradicts': 'contradicts'}
 # Impulse colours from a deep tail to the icy head; terminal_ui maps them to a blue ramp.
 SPARK = ('abyss', 'deep', 'tide', 'azure', 'ice', 'spark')
 TAIL = ('spark', 'ice', 'ice', 'azure', 'azure', 'azure', 'tide', 'tide', 'deep')
@@ -489,7 +489,7 @@ class Sky:
         """
         cols=max(1,cols);rows=max(1,rows);canvas=Canvas(cols,rows)
         if not notes:
-            canvas.put(rows//2,2,'Noch keine Notizen. Sobald Wissen entsteht, wächst hier sein Netz.',8);return canvas if cells else canvas.runs()
+            canvas.put(rows//2,2,'No notes yet. Your network will grow as you add knowledge.',8);return canvas if cells else canvas.runs()
         signature=(version,cols,rows,tuple(row.get('id') for row in items),index,focus,None if matches is None else frozenset(matches),tuple(trail),self.motion and awake,framed,tuple(header),cells,self.light)
         if version is not None and signature==self.still[0] and not self.animating(awake):return self.still[1]
         self.sync(notes);self.clock=now;moving=self.motion and awake
@@ -510,7 +510,7 @@ class Sky:
         full=cols>=96 and rows>=22;panel=min(46,max(30,cols//4)) if full and framed else 0
         story=self._story(notes,focus,selected,items,index,matches,lapse,now)
         hud=self._hud(story,full,cols-panel-4,rows-len(header),now,moving,items,index,framed)
-        if not story and matches is not None:hud=[('Keine Treffer. Esc zeigt wieder alle Notizen.',9)]
+        if not story and matches is not None:hud=[('No results. Press Esc to show all notes.',9)]
         # Full screen: the body sits a little right of centre, clear of the name at the bottom left.
         if full and not framed:room=rows-len(header);ox=cols*1.06;oy=(rows+len(header))*2;ry=.44*min(cols*2,room*4);rx=min(ry*1.6,cols*.88)
         else:
@@ -542,11 +542,11 @@ class Sky:
             fade=thought['end'] is not None and self.age-thought['end']>2.2;names='  →  '.join(self.names.get(ident,ident) for ident in reached)
             text=_clip(names,max(10,cols-24));width=sum(span for _,span in _cells(text))+16
             if canvas.free(row,0,min(cols,width+4),below=2):
-                canvas.plate(row,0,min(cols,width+4),1,True);canvas.put(row,2,'GEDANKENGANG',8 if fade else 9,True);canvas.put(row,18,text,8 if fade else 'accent',True)
+                canvas.plate(row,0,min(cols,width+4),1,True);canvas.put(row,2,'THOUGHT PATH',8 if fade else 9,True);canvas.put(row,18,text,8 if fade else 'accent',True)
         if full and not framed and place is not None and not lapse:
-            legend=[('Mitte Fokus  ·  innen direkte Nachbarn  ·  außen ein Schritt weiter',6),('Impulse und Gedankengänge folgen den echten Verbindungen',5)] if focus else [
-                ('● Zelle = Notiz, größer mit mehr Verbindungen',6),('gefüllt bestätigt   hohl berichtet   gebrochen umstritten',6),
-                ('Faser = Verbindung, gepunktet: verwandt',6),('Gedankengang: zufälliger Weg über echte Verbindungen  ·  Glimmen: in 72 h bearbeitet',5)]
+            legend=[('Center: focus  ·  inner: direct neighbors  ·  outer: one step further',6),('Signals and thought paths follow real connections',5)] if focus else [
+                ('● Cell = note, larger with more connections',6),('filled confirmed   hollow reported   broken disputed',6),
+                ('Fiber = connection, dotted: related',6),('Thought path: random route over real links  ·  Glow: edited within 72 h',5)]
             for offset,(text,style) in enumerate(legend):
                 width=sum(span for _,span in _cells(text));row=rows-len(legend)+offset
                 if canvas.free(row,cols-width-3,width+2):canvas.put(row,cols-width-2,text,style)
@@ -907,21 +907,21 @@ class Sky:
             elapsed=min(REPLAY,now-lapse['start']);at=lapse['first']+dt.timedelta(seconds=elapsed/REPLAY*lapse['span'])
             done=[event for event in lapse['events'] if event[0]<=elapsed];current=done[-1] if done else lapse['events'][0]
             count=sum(1 for ident in notes if lapse['born'].get(ident,0.0)<=elapsed)
-            return {'kind':'lapse','caption':f'ZEITRAFFER  ·  {count} NOTIZEN  ·  ÄNDERUNG {len(done)} / {len(lapse["events"])}',
+            return {'kind':'lapse','caption':f'TIMELAPSE  ·  {count} NOTES  ·  CHANGE {len(done)} / {len(lapse["events"])}',
                     'head':at.astimezone().strftime('%d.%m.%Y'),'subtitle':_clean(current[3]),'summary':'','changed':lapse['start'],
-                    'meta':current[1].astimezone().strftime('%d.%m.%Y, %H:%M Uhr')+'  ·  '+_clean(current[4])}
+                    'meta':current[1].astimezone().strftime('%d.%m.%Y, %H:%M')+'  ·  '+_clean(current[4])}
         ident=focus or selected
         if not ident:return None
         note=notes[ident];title=_clean(note['title']);head=short(title);degree=self.degree.get(ident,0)
         rest=title[len(head):].lstrip(' ·:') if title.startswith(head) else ''
-        caption=f'FOKUS  ·  {len(items)} NACHBAR'+('N' if len(items)!=1 else '') if focus else ('TREFFER' if matches is not None else 'NOTIZ')+f'  {index+1:02d} / {len(items):02d}'
+        caption=f'FOCUS  ·  {len(items)} NEIGHBOR'+('S' if len(items)!=1 else '') if focus else ('RESULT' if matches is not None else 'NOTE')+f'  {index+1:02d} / {len(items):02d}'
         meta=[TYPES.get(note['type'],note['type']),hive.cluster_for(note),EVIDENCE.get(note['evidence'],note['evidence']),
-              'Prüfung fällig' if _stale(note) else 'im Prüfzeitraum',f'{degree} Verbindung'+('en' if degree!=1 else '')]
-        if note.get('archived'):meta.append('archiviert')
-        elif note.get('status')=='deprecated':meta.append('veraltet')
+              'review due' if _stale(note) else 'within review period',f'{degree} connection'+('s' if degree!=1 else '')]
+        if note.get('archived'):meta.append('archived')
+        elif note.get('status')=='deprecated':meta.append('deprecated')
         if focus and items and 0<=index<len(items):
-            row=items[index];ribbon=f"NACHBAR {index+1:02d}/{len(items):02d}   {row.get('direction','')} {RELATIONS.get(row.get('relation'),row.get('relation',''))}   {self.names.get(row['id'],short(row.get('title','')))}"+('   —   '+row['reason'] if row.get('reason') else '')
-        elif focus:ribbon='Keine aktiven Verbindungen für diese Notiz.'
+            row=items[index];ribbon=f"NEIGHBOR {index+1:02d}/{len(items):02d}   {row.get('direction','')} {RELATIONS.get(row.get('relation'),row.get('relation',''))}   {self.names.get(row['id'],short(row.get('title','')))}"+('   —   '+row['reason'] if row.get('reason') else '')
+        elif focus:ribbon='No active connections for this note.'
         else:ribbon='   ·   '.join(part for part in ('↑ '+self.names.get(items[index-1]['id'],'') if index>0 else '','↓ '+self.names.get(items[index+1]['id'],'') if index+1<len(items) else '') if part)
         return {'kind':'focus' if focus else 'star','caption':caption,'head':head,'subtitle':rest,'meta':'  ·  '.join(meta),'ribbon':ribbon,
                 'summary':note.get('summary','') if focus else '','changed':self.focus_at if focus else self.selected_at}
@@ -940,9 +940,9 @@ class Sky:
             return [(story['caption'],8),(_clip(story['head'],width),15),(_clip(story['meta'],width),7)][:max(1,rows-5)]
         width+=2
         if kind=='lapse':return [(_clip(story['head']+'  ·  '+story['caption'],width),15),(_clip(story['subtitle'],width),8)][:max(1,rows)]
-        lines=[(_clip(('FOKUS  ' if kind=='focus' else '◉ ')+story['head']+('  ·  '+story['subtitle'] if story['subtitle'] else ''),width),15)]
+        lines=[(_clip(('FOCUS  ' if kind=='focus' else '◉ ')+story['head']+('  ·  '+story['subtitle'] if story['subtitle'] else ''),width),15)]
         if kind=='focus':
-            if not items:lines.append(('Keine aktiven Verbindungen für diese Notiz.',8))
+            if not items:lines.append(('No active connections for this note.',8))
             room=max(1,min(len(items),rows//2-1));first=max(0,min(index-room//2,len(items)-room))
             for i,row in enumerate(items[first:first+room],first):
                 text=f"{row.get('direction','')} {RELATIONS.get(row.get('relation'),row.get('relation',''))}  {self.names.get(row['id'],short(row.get('title','')))}"+(' · '+row['reason'] if row.get('reason') else '')
@@ -955,23 +955,23 @@ class Sky:
         canvas.plate(0,x,width,rows,fixed=True);x+=2;width-=4
         if lapse:
             elapsed=min(REPLAY,now-lapse['start']);done=[event for event in lapse['events'] if event[0]<=elapsed];count=f'{len(done)}/{len(lapse["events"])}'
-            canvas.put(0,x,'CHRONIK',9);canvas.put(0,x+width-len(count),count,7)
+            canvas.put(0,x,'HISTORY',9);canvas.put(0,x+width-len(count),count,7)
             for i,(_,at,_,reason,_) in enumerate(reversed(done[-max(1,rows-2):])):
                 canvas.put(2+i,x,_clip(at.astimezone().strftime('%d.%m.  ')+reason,width),15 if i==0 else max(4,11-i))
             return
         if focus:
-            title,count,lines='NACHBARN',str(len(items)),[]
-            if trail:lines+=[('PFAD  '+' › '.join(self.names.get(i,i) for i in list(trail)[-3:]+[focus] if i in notes),-2),('',-2)]
+            title,count,lines='NEIGHBORS',str(len(items)),[]
+            if trail:lines+=[('PATH  '+' › '.join(self.names.get(i,i) for i in list(trail)[-3:]+[focus] if i in notes),-2),('',-2)]
             for i,row in enumerate(items):
                 relation=RELATIONS.get(row.get('relation'),row.get('relation',''))
                 lines.append((f"{row.get('direction','')} {relation:<13}{self.names.get(row['id'],short(row.get('title','')))}" if len(relation)<13 else f"{row.get('direction','')} {relation}  {self.names.get(row['id'],short(row.get('title','')))}",i))
                 if row.get('reason'):lines.append(('   '+row['reason'],-1))
-            if not items:lines.append(('Keine aktiven Verbindungen.',-1))
+            if not items:lines.append(('No active connections.',-1))
         else:
-            title,count=('TREFFER' if matches is not None else 'NOTIZEN'),str(len(items))
+            title,count=('RESULT' if matches is not None else 'NOTES'),str(len(items))
             lines=[(f"{self.degree.get(row['id'],0):>2}  {notes[row['id']]['title']}",i) for i,row in enumerate(items)]
         canvas.put(0,x,title,9);canvas.put(0,x+width-len(count),count,7)
-        legend=[] if focus else [('● Zelle = Notiz, Faser = Verbindung',6),('gefüllt bestätigt  ·  hohl berichtet',6),('Glimmen: in 72 h bearbeitet',5)]
+        legend=[] if focus else [('● Cell = note, fiber = connection',6),('filled confirmed  ·  hollow reported',6),('Glow: edited within 72 h',5)]
         room=max(1,rows-2-(len(legend)+1 if legend else 0))
         anchor=next((i for i,(_,kind) in enumerate(lines) if kind==index),0);first=max(0,min(anchor-room//2,len(lines)-room))
         for offset,(text,kind) in enumerate(lines[first:first+room]):

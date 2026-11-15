@@ -160,8 +160,8 @@ class SessionsTest(unittest.TestCase):
         payload["evidence"] = "inferred"
         sessions.close_session(self.root, opened["session_id"], payload)
         note = hive.load_notes(self.root)["demo"][0]
-        self.assertIn("Vorschlag, nicht beschlossen", note["body"])
-        self.assertIn("Evidenz: abgeleitet", note["body"])
+        self.assertIn("Proposed, not agreed", note["body"])
+        self.assertIn("Evidence: inferred", note["body"])
         self.assertEqual(note["evidence"], "reported")
         self.assertEqual(note["verified"], [])
 

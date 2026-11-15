@@ -39,9 +39,9 @@ def _check(ident, status, detail, **metadata):
 
 def _canonical(root):
     if not root.is_dir() or not (root / 'wiki').is_dir():
-        return _check('canonical', 'error', 'Wissensspeicher fehlt; den angegebenen Speicherpfad prüfen.', state='missing_store'), None
+        return _check('canonical', 'error', 'Vault is missing; check the selected path.', state='missing_store'), None
     if (root / '.pending.json').exists():
-        return _check('canonical', 'error', 'Offene Transaktion: vor weiterer Nutzung den dokumentierten recover-Ablauf prüfen.', state='pending_transaction'), None
+        return _check('canonical', 'error', 'Pending transaction: check the documented recover workflow before continuing.', state='pending_transaction'), None
     try:
         records = hive.load_notes(root)
         types = {ident: row[0]['type'] for ident, row in records.items()}
@@ -49,28 +49,28 @@ def _canonical(root):
             hive.validate(note, types)
         hive.audit(root, records)
         if (root / '.pending.json').exists():
-            return _check('canonical', 'attention', 'Während der Prüfung begann eine Transaktion; nach ihrem Abschluss erneut prüfen.', state='changed_during_check'), None
-        return _check('canonical', 'ok', 'Notizstruktur und Journal passen im gelesenen Stand zusammen; sachliche Richtigkeit ist damit nicht bewiesen.',
+            return _check('canonical', 'attention', 'A transaction started during the check; retry after it finishes.', state='changed_during_check'), None
+        return _check('canonical', 'ok', 'The note structure and journal match in the observed state; this does not establish factual correctness.',
                       state='valid', notes=len(records)), records
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return _check('canonical', 'error', 'Notizstruktur oder Journal ist nicht konsistent lesbar; mit hive check gezielt untersuchen.', state='invalid'), None
+        return _check('canonical', 'error', 'Note structure or journal cannot be read consistently; investigate with hive check.', state='invalid'), None
 
 
 def _rules(root, home, agent):
     ident = agent + '.rules'
     path = home / ('.' + agent) / ('AGENTS.md' if agent == 'codex' else 'CLAUDE.md')
     if not path.exists():
-        return _check(ident, 'attention', 'Keine globale Regeldatei vorhanden; eine Integration kann andernorts eingerichtet sein.', state='not_installed')
+        return _check(ident, 'attention', 'No global instructions file is present; an integration may be configured elsewhere.', state='not_installed')
     try:
         text = path.read_text()
         starts, ends = text.count(START), text.count(END)
         if starts != ends or starts > 1 or (starts == 1 and text.index(START) >= text.index(END)):
-            return _check(ident, 'error', 'HiveMind-Regelblock ist unvollständig oder mehrfach vorhanden.', state='invalid')
+            return _check(ident, 'error', 'The HiveMind instruction block is incomplete or duplicated.', state='invalid')
         if not starts:
             delegated = 'START.md' in text and ('HiveMind' in text or str(root) in text)
             return _check(ident, 'attention',
-                          'Die Regeldatei verweist auf START.md; kein direkt vergleichbarer verwalteter Block. Das beweist keinen Laufzeitfehler.' if delegated else
-                          'Kein verwalteter HiveMind-Regelblock gefunden; projektbezogene Anweisungen können weiterhin greifen.',
+                          'The instructions point to START.md; no managed block can be compared directly. This does not prove a runtime failure.' if delegated else
+                          'No managed HiveMind instruction block found; project instructions may still apply.',
                           state='delegated' if delegated else 'not_installed')
         template = root / 'integrations' / (agent + '-global.md')
         if not template.is_file():
@@ -78,10 +78,10 @@ def _rules(root, home, agent):
         expected = template.read_text().strip()
         block = text[text.index(START):text.index(END) + len(END)].strip()
         if block == expected:
-            return _check(ident, 'ok', 'Installierter HiveMind-Regelblock entspricht der Repo-Vorlage.', state='current')
-        return _check(ident, 'attention', 'Installierter HiveMind-Regelblock weicht von der Repo-Vorlage ab; Unterschiede vor einer freigegebenen Aktualisierung prüfen.', state='drift')
+            return _check(ident, 'ok', 'The installed HiveMind instruction block matches the repository template.', state='current')
+        return _check(ident, 'attention', 'The installed HiveMind instruction block differs from the repository template; review differences before an authorized update.', state='drift')
     except (OSError, ValueError):
-        return _check(ident, 'error', 'Regeldatei oder Vergleichsvorlage ist nicht lesbar.', state='unreadable')
+        return _check(ident, 'error', 'The instructions file or comparison template is unreadable.', state='unreadable')
 
 
 def _command(command, root):
@@ -158,23 +158,23 @@ def _hooks(root, home, agent):
                     if state:
                         found.append(state)
             if not found:
-                rows.append(_check(agent + '.' + suffix, 'attention', event + ': kein HiveMind-Kommando in dieser Konfiguration gefunden.', state='not_installed', configured=0))
+                rows.append(_check(agent + '.' + suffix, 'attention', event + ': no HiveMind command found in this configuration.', state='not_installed', configured=0))
             elif found == ['configured']:
-                rows.append(_check(agent + '.' + suffix, 'ok', event + ': ein bekannter lokaler Adapter ist konfiguriert; seine tatsächliche Ausführung ist hier nicht geprüft.', state='configured', configured=1))
+                rows.append(_check(agent + '.' + suffix, 'ok', event + ': a known local adapter is configured; its actual execution has not been checked here.', state='configured', configured=1))
             else:
                 errors = any(s in {'invalid', 'missing_adapter'} for s in found)
                 rows.append(_check(agent + '.' + suffix, 'error' if errors else 'attention',
-                                   event + ': Adapterpfad, Aufruf oder Mehrfachkonfiguration prüfen.',
+                                   event + ': check the adapter path, command, or duplicate configuration.',
                                    state='needs_review', configured=len(found), adapter_states=found))
         return rows
     except (OSError, ValueError):
-        return [_check(agent + '.hooks', 'error', 'Hook-Konfiguration ist nicht als gültige Konfiguration lesbar; private Inhalte werden nicht ausgegeben.', state='invalid')]
+        return [_check(agent + '.hooks', 'error', 'Hook configuration cannot be read as valid configuration; private content is not displayed.', state='invalid')]
 
 
 def _projects(root, records):
     path = root / project_context.REGISTRY
     if not path.exists():
-        return _check('projects', 'attention', 'Keine expliziten Projektzuordnungen; vorhandene Legacy-Zuordnungen oder projects/<id> können weiterhin funktionieren.', state='not_configured', registered=0)
+        return _check('projects', 'attention', 'No explicit project mappings; existing legacy mappings or projects/<id> may still work.', state='not_configured', registered=0)
     try:
         rows = project_context._registry(root)['mappings']
         missing = sum(not Path(row['path']).is_dir() for row in rows)
@@ -182,17 +182,17 @@ def _projects(root, records):
                                for note, _, _ in records.values()) for row in rows) if records is not None else None
         attention = bool(missing or inactive or records is None)
         return _check('projects', 'attention' if attention else 'ok',
-                      'Projektordner oder Zielcluster prüfen; bei ungültigem Wissensspeicher ist die Clusterprüfung unvollständig.' if attention else
-                      'Explizite Zuordnungen zeigen auf vorhandene Ordner und aktive interne Projektbereiche.',
+                      'Check the project folder or target cluster; an invalid vault makes the cluster check incomplete.' if attention else
+                      'Explicit mappings point to existing folders and active internal project areas.',
                       state='needs_review' if attention else 'valid', registered=len(rows), missing_folders=missing, inactive_projects=inactive)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return _check('projects', 'error', 'Projektzuordnungen sind nicht gültig lesbar; hive projects und die lokale Registry prüfen.', state='invalid')
+        return _check('projects', 'error', 'Project mappings are not valid or readable; check hive projects and the local registry.', state='invalid')
 
 
 def _sessions(root):
     folder = root / '.state/sessions'
     if folder.exists() and not folder.is_dir():
-        return _check('sessions', 'error', 'Der Sitzungsordner ist nicht lesbar.', state='invalid', malformed=1)
+        return _check('sessions', 'error', 'The session folder is unreadable.', state='invalid', malformed=1)
     counts = {'total': 0, 'malformed': 0, 'unfinished': 0, 'open': 0, 'ended_without_close': 0, 'write_intents': 0}
     try:
         paths = sorted(folder.glob('*.json'))
@@ -214,12 +214,12 @@ def _sessions(root):
                 counts['malformed'] += 1
         status = 'error' if counts['malformed'] else 'attention' if counts['unfinished'] else 'ok'
         return _check('sessions', status,
-                      'Ungültige Quittungen prüfen; keine Sitzung wurde verändert.' if counts['malformed'] else
-                      'Sitzungen ohne Abschluss vorhanden. Offen bedeutet nicht nachweislich aktiv; ein Laufzeitende bestätigt keinen Aufgabenerfolg.' if counts['unfinished'] else
-                      'Keine offenen oder ungültigen Sitzungsquittungen im gelesenen Stand.',
+                      'Check invalid receipts; no session was modified.' if counts['malformed'] else
+                      'Unfinished sessions are present. Open does not prove active; a runtime end does not confirm task success.' if counts['unfinished'] else
+                      'No open or invalid session receipts in the observed state.',
                       state='needs_review' if status != 'ok' else 'valid', **counts)
     except OSError:
-        return _check('sessions', 'error', 'Sitzungsquittungen sind nicht lesbar.', state='unreadable')
+        return _check('sessions', 'error', 'Session receipts are unreadable.', state='unreadable')
 
 
 def inspect(root, home=None):

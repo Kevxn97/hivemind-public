@@ -116,17 +116,17 @@ def render(note):
     lines = []
     exp = note.get('experience')
     if exp:
-        lines += ['## Strukturierte Erfahrung',
-                  f"Erkenntnis ({exp['status']}): {exp['lesson']} Geltung: {exp['scope']}. "
-                  f"Situation: {exp['situation']}. Vorgehen: {exp['approach']}. Erwartung: {exp['expected_result']}."]
+        lines += ['## Structured lesson',
+                  f"Lesson ({exp['status']}): {exp['lesson']} Scope: {exp['scope']}. "
+                  f"Situation: {exp['situation']}. Approach: {exp['approach']}. Expected result: {exp['expected_result']}."]
         for row in exp['observations']:
-            lines.append(f"Beobachtung {row['id']} ({row['kind']}, {row['evidence']}, {row['observed_at']}): "
+            lines.append(f"Observation {row['id']} ({row['kind']}, {row['evidence']}, {row['observed_at']}): "
                          f"{row['result']} [^{row['source_id']}]")
     for claim in note.get('claims', []):
         result = claim.get('last_check')
-        state = ('gespeicherte Prüfung: ' + result['outcome'] + ' am ' + result['observed_at']) if result else 'noch ungeprüft'
-        lines += ['## Aussage ' + claim['id'], f"{claim['text']} Geltung: {claim['scope']}. {state}. "
-                  f"Erneut prüfen ab {claim['recheck_after']}; Prüfweg über verify-plan ID@REVISION --claim {claim['id']}."]
+        state = ('saved review: ' + result['outcome'] + ' on ' + result['observed_at']) if result else 'not yet reviewed'
+        lines += ['## Claim ' + claim['id'], f"{claim['text']} Scope: {claim['scope']}. {state}. "
+                  f"Review again after {claim['recheck_after']}; verification path: verify-plan ID@REVISION --claim {claim['id']}."]
     return '\n\n'.join(lines)
 
 

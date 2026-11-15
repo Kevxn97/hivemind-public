@@ -49,7 +49,7 @@ else:
     from integrations import ingest
 
 BASE = Path(__file__).resolve().parent
-TABS = ('Übersicht', 'Wissen', 'Netz', 'Eingang', 'Quellen')
+TABS = ('Overview', 'Knowledge', 'Network', 'Inbox', 'Sources')
 # xterm-256 grays for the constellation's brightness levels, dimmest first.
 GRAYS = (237, 238, 239, 240, 242, 243, 244, 245, 246, 247, 248, 250, 251, 253, 255, 231)
 FRAME = 1/24
@@ -68,15 +68,15 @@ PALETTE = {'accent':(221,curses.COLOR_YELLOW),'shade':(179,curses.COLOR_YELLOW),
            'due':(180,curses.COLOR_YELLOW),'error':(167,curses.COLOR_RED),'projects':(179,curses.COLOR_YELLOW),
            'work':(144,curses.COLOR_YELLOW),'personal':(181,curses.COLOR_MAGENTA),'people':(182,curses.COLOR_MAGENTA),
            'knowledge':(151,curses.COLOR_GREEN),'system':(246,curses.COLOR_WHITE)}
-AREAS = (('personal','Persönlich'),('people','Personen'),('work','Arbeit'),('projects','Projekte'),('knowledge','Wissen'),('system','Betrieb'))
+AREAS = (('personal','Personal'),('people','People'),('work','Work'),('projects','Projects'),('knowledge','Knowledge'),('system','System'))
 MARKS = {'confirmed':('●','ok'),'reported':('○','mute'),'inferred':('◌','mute'),'disputed':('◇','error')}
 TONES = {'complete':'ok','ok':'ok','active':'ok','idle':'soft','running':'accent','partial':'due','pending':'due',
          'stale':'due','incomplete':'due','stopped':'due','not_run':'mute','unavailable':'mute','failed':'error','blocked':'error'}
-STATUS = {'idle':'bereit', 'disabled':'ausgeschaltet', 'paused':'pausiert', 'running':'läuft', 'complete':'vollständig',
-          'partial':'teilweise', 'failed':'fehlgeschlagen', 'pending':'offen',
-          'not_run':'noch nicht gelesen', 'unavailable':'nicht verfügbar',
-          'blocked':'blockiert', 'incomplete':'unvollständig', 'ok':'aktuell',
-          'stale':'veraltet', 'stopped':'gestoppt', 'active':'aktiv'}
+STATUS = {'idle':'ready', 'disabled':'off', 'paused':'paused', 'running':'running', 'complete':'complete',
+          'partial':'partial', 'failed':'failed', 'pending':'pending',
+          'not_run':'not yet read', 'unavailable':'unavailable',
+          'blocked':'blocked', 'incomplete':'incomplete', 'ok':'up to date',
+          'stale':'outdated', 'stopped':'stopped', 'active':'active'}
 # Warm network light, from deep amber to pale gold.
 LIGHT = ((0,(0,0,0)),(.25,(24,12,2)),(.5,(82,43,7)),(.75,(170,108,24)),(1,(255,206,72)))
 
@@ -124,7 +124,7 @@ def _json(path, fallback):
 
 def _agenda(root):
     value=_json(root/'.state/agenda.json',{'status':'unavailable','events':[]})
-    if not isinstance(value,dict) or not isinstance(value.get('events',[]),list):raise ValueError('Ungültiger Kalenderstand.')
+    if not isinstance(value,dict) or not isinstance(value.get('events',[]),list):raise ValueError('Invalid calendar state.')
     if value.get('status')=='ok':
         try:
             age=(dt.datetime.now(dt.timezone.utc)-hive.timestamp(value['exported_at'])).total_seconds()
@@ -168,7 +168,7 @@ def snapshot(root):
                                   for item in work_items.read(note)]
         result['valid']=True
     except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as exc:
-        result['errors'].append('Wissensprüfung fehlgeschlagen: '+str(exc))
+        result['errors'].append('Knowledge check failed: '+str(exc))
     for key,operation in (
         ('inbox',lambda:ingest.inbox(root)),
         ('sources',lambda:ingest.source_status(root)['sources']),
@@ -309,18 +309,18 @@ def _when(value):
 
 def _background_label(data):
     value=data.get('background') or {}
-    if not isinstance(value,dict) or not value:return 'kein lokaler Herzschlag'
+    if not isinstance(value,dict) or not value:return 'no local heartbeat'
     # A stored timestamp is evidence of a previous tick, not proof a process lives.
     at=next((value.get(k) for k in ('heartbeat_at','heartbeat','last_tick_at','updated_at','last_run_at') if value.get(k)),None)
-    state=('aktiv' if value['daemon_running'] else 'gestoppt') if 'daemon_running' in value else STATUS.get(value.get('status'),value.get('status') or 'gespeichert')
+    state=('active' if value['daemon_running'] else 'stopped') if 'daemon_running' in value else STATUS.get(value.get('status'),value.get('status') or 'saved')
     operational=''
-    if value.get('status')=='paused':operational=' · Automatik pausiert'
-    elif value.get('status')=='degraded':operational=' · gestört'
+    if value.get('status')=='paused':operational=' · automation paused'
+    elif value.get('status')=='degraded':operational=' · degraded'
     elif value.get('backoff_until'):
         try:
-            if hive.timestamp(value['backoff_until'])>dt.datetime.now(dt.timezone.utc):operational=' · Quellenpause'
-        except (ValueError,TypeError):operational=' · Pausenzeit prüfen'
-    return state+operational+(' · Stand '+_when(at) if at else ' · gespeicherter Stand')
+            if hive.timestamp(value['backoff_until'])>dt.datetime.now(dt.timezone.utc):operational=' · source backoff'
+        except (ValueError,TypeError):operational=' · check backoff time'
+    return state+operational+(' · as of '+_when(at) if at else ' · saved state')
 
 
 def _area(note):
@@ -330,20 +330,20 @@ def _area(note):
 def _background_state(data):
     """Short state and tone of the background service."""
     value=data.get('background') or {}
-    if not isinstance(value,dict) or not value:return 'kein Herzschlag','mute'
-    if value.get('status')=='degraded':return 'gestört','error'
-    if value.get('status')=='paused':return 'pausiert','due'
-    if value.get('daemon_running') is False:return 'gestoppt','due'
+    if not isinstance(value,dict) or not value:return 'no heartbeat','mute'
+    if value.get('status')=='degraded':return 'degraded','error'
+    if value.get('status')=='paused':return 'paused','due'
+    if value.get('daemon_running') is False:return 'stopped','due'
     try:
-        if value.get('backoff_until') and hive.timestamp(value['backoff_until'])>dt.datetime.now(dt.timezone.utc):return 'Quellenpause','due'
-    except (ValueError,TypeError):return 'Pausenzeit prüfen','due'
-    return 'aktiv','ok'
+        if value.get('backoff_until') and hive.timestamp(value['backoff_until'])>dt.datetime.now(dt.timezone.utc):return 'source backoff','due'
+    except (ValueError,TypeError):return 'check backoff time','due'
+    return 'active','ok'
 
 
 def _tone(message):
     text=message.casefold()
-    if any(word in text for word in ('fehlgeschlagen','fehler','gestört','konnte nicht','ungültig')):return 'error'
-    if any(word in text for word in ('gespeichert','aktualisiert','gestartet')):return 'ok'
+    if any(word in text for word in ('failed','error','degraded','could not','invalid','fehlgeschlagen','fehler','gestört','konnte nicht','ungültig')):return 'error'
+    if any(word in text for word in ('saved','updated','started','gespeichert','aktualisiert','gestartet')):return 'ok'
     return 'soft'
 
 
@@ -361,11 +361,11 @@ def agenda_lines(data, days=14):
             if event.get('all_day'):
                 first=dt.date.fromisoformat(event['start_date']);exclusive=dt.date.fromisoformat(event['end_date_exclusive'])
                 if exclusive<=today or first>=last:continue
-                day=max(today,first);label=day.strftime('%d.%m.')+'  ganztags'
+                day=max(today,first);label=day.strftime('%d.%m.')+'  all day'
             else:
                 if end<=dt.datetime.combine(today,dt.time(),zone) or start.date()>=last:continue
                 day=max(today,start.date());label=day.strftime('%d.%m.')+'  '+start.strftime('%H:%M')
-            result.append((day,start,label+'  '+clean(event.get('title') or 'Ohne Titel')))
+            result.append((day,start,label+'  '+clean(event.get('title') or 'Untitled')))
         except (ValueError,TypeError,KeyError):continue
     return [row[2] for row in sorted(result,key=lambda row:(row[0],row[1]))]
 
@@ -375,23 +375,23 @@ def render_plain(root, width=80, data=None):
     data=snapshot(root) if data is None else data;width=max(30,min(int(width),160))
     notes=visible_notes(data);review=[n for n in notes.values() if hive.freshness(n)=='stale' or n['evidence']!='confirmed']
     pending=sum(not item.get('processed') for item in data['inbox'])
-    lines=['HIVEMIND / persönliches Wissen', '─'*width]
-    if data['valid']:lines.append(f'{len(notes)} Notizen · {len(review)} zur Prüfung · {pending} Gedanken offen')
-    lines.extend(['Hintergrund: '+_background_label(data),'Abgleich: '+STATUS.get(data['job'].get('status'),data['job'].get('status','unbekannt')),
-                  'Kalender: '+STATUS.get(data['agenda'].get('status'),'unbekannt')+' · Stand '+_when(data['agenda'].get('exported_at'))])
-    if data.get('background',{}).get('message'):lines.extend(['Automatik: '+clean(data['background']['message'])])
+    lines=['HIVEMIND / personal knowledge', '─'*width]
+    if data['valid']:lines.append(f'{len(notes)} notes · {len(review)} to review · {pending} thoughts pending')
+    lines.extend(['Background: '+_background_label(data),'Sync: '+STATUS.get(data['job'].get('status'),data['job'].get('status','unknown')),
+                  'Calendar: '+STATUS.get(data['agenda'].get('status'),'unknown')+' · as of '+_when(data['agenda'].get('exported_at'))])
+    if data.get('background',{}).get('message'):lines.extend(['Automation: '+clean(data['background']['message'])])
     if data['sources']:
-        lines.extend(['','QUELLEN']+[row.get('title',row['id'])+' · '+STATUS.get(row.get('status'),row.get('status','unbekannt')) for row in data['sources']])
+        lines.extend(['','SOURCES']+[row.get('title',row['id'])+' · '+STATUS.get(row.get('status'),row.get('status','unknown')) for row in data['sources']])
     if __package__:
         from . import work_items
     else:
         import work_items
     pending_work=[item for item in data.get('work_items',[]) if item['state'] in {'open','waiting'}]
     if pending_work:
-        lines.extend(['','OFFENE ARBEIT']+[item['project']+' / '+work_items.line(item) for item in pending_work[:5]])
-    if data['errors']:lines.extend(['','HINWEISE']+data['errors'])
-    lines.extend(['','Kein interaktives Terminal: lokaler Status ohne Website.',
-                  'Im Terminal: hive   /   n Gedanke   s Abgleich   q Schließen'])
+        lines.extend(['','OPEN WORK']+[item['project']+' / '+work_items.line(item) for item in pending_work[:5]])
+    if data['errors']:lines.extend(['','NOTICES']+data['errors'])
+    lines.extend(['','No interactive terminal: local status without a website.',
+                  'In a terminal: hive   /   n thought   s sync   q quit'])
     return '\n'.join(line for item in lines for line in wrap(item,width))+'\n'
 
 
@@ -509,15 +509,15 @@ class Interface:
         _send(b'\x1b[?2026h');self.screen.refresh();_send(('\x1b7'+cells+'\x1b8\x1b[?2026l').encode())
 
     def launch(self,kind):
-        if self.busy:self.notice='Eine lokale Aktion läuft bereits.';return
-        self.busy=True;self.notice='Abgleich wird gestartet …' if kind=='sync' else 'Kalender wird gelesen …'
+        if self.busy:self.notice='A local action is already running.';return
+        self.busy=True;self.notice='Starting sync …' if kind=='sync' else 'Reading calendar …'
         def worker():
             try:
                 result=jobs.start(self.root) if kind=='sync' else ingest.refresh_calendar(self.root)
                 if kind=='sync':
-                    message='Abgleich gestartet · läuft im Hintergrund weiter.' if result.get('status')=='running' else result.get('message','Abgleich: '+str(result.get('status')))
-                else:message='Kalender aktualisiert.' if result.get('status')=='ok' else 'Kalender: '+STATUS.get(result.get('status'),'nicht verfügbar')
-            except Exception as exc:message='Aktion fehlgeschlagen: '+str(exc)
+                    message='Sync started · continues in the background.' if result.get('status')=='running' else result.get('message','Sync: '+str(result.get('status')))
+                else:message='Calendar updated.' if result.get('status')=='ok' else 'Calendar: '+STATUS.get(result.get('status'),'unavailable')
+            except Exception as exc:message='Action failed: '+str(exc)
             self.work.put(message)
         threading.Thread(target=worker,daemon=True).start()
 
@@ -534,7 +534,7 @@ class Interface:
                 phrase=self.query.casefold()
                 matches.update(ident for ident,note in values.items() if phrase in (' '.join([note['title'],note['summary']]+note.get('aliases',[]))).casefold())
                 values={ident:note for ident,note in values.items() if ident in matches}
-            except (OSError,ValueError) as exc:self.notice='Suche: '+str(exc);return []
+            except (OSError,ValueError) as exc:self.notice='Search: '+str(exc);return []
         result=sorted(values.values(),key=lambda n:(rank.get(n['id'],len(rank)),n['title'].casefold(),n['id']))
         self.note_cache[cache_key]=result
         return result
@@ -556,7 +556,7 @@ class Interface:
             self.line(y,text,self.look(style))
         if len(lines)>available:self.put(bottom-1,max(3,self.screen.getmaxyx()[1]-18),f'{self.scroll+1}–{min(len(lines),self.scroll+available)}/{len(lines)}',self.dim)
 
-    def show_list(self,items,start,bottom,empty='Noch nichts vorhanden.',width=None):
+    def show_list(self,items,start,bottom,empty='Nothing here yet.',width=None):
         """Rows carry coloured `parts` (or a plain `label`) and optional right-aligned parts."""
         self.items=items;self.selection=max(0,min(self.selection,max(0,len(items)-1)))
         height=max(1,bottom-start)
@@ -588,7 +588,7 @@ class Interface:
         left = x + len(emblem[0]) + 3
         if compact:
             self.write(y + 1, left, [('HIVE', 'accent'), ('MIND', 'ivory')])
-            self.put(y + 2, left, 'ÜBERSICHT', self.tone['mute'])
+            self.put(y + 2, left, 'OVERVIEW', self.tone['mute'])
         else:
             for offset, (hive_part, mind_part) in enumerate(zip(terminal_brand.HIVE, terminal_brand.MIND)):
                 self.write(y + 1 + offset, left, [(hive_part, 'accent'), (' ', ''), (mind_part, 'ivory')])
@@ -597,16 +597,16 @@ class Interface:
     def agenda(self,y,x,width,bottom,limit=6):
         """Upcoming events, today and tomorrow by name; returns the next free row."""
         events=agenda_lines(self.data);today=dt.date.today()
-        names={today.strftime('%d.%m.'):'Heute',(today+dt.timedelta(days=1)).strftime('%d.%m.'):'Morgen'}
+        names={today.strftime('%d.%m.'):'Today',(today+dt.timedelta(days=1)).strftime('%d.%m.'):'Tomorrow'}
         shown=events[:max(1,min(limit,bottom-y-1))]
-        for event in shown or ['Keine geladenen Termine. Mit r bewusst neu lesen.']:
+        for event in shown or ['No calendar events loaded. Press r to refresh.']:
             if y>=bottom:break
             if event in events:
                 day,clock,title=(event.split('  ',2)+['',''])[:3]
                 self.write(y,x,[(names.get(day,day).ljust(8),'accent' if day in names else 'mute'),(clock.ljust(10),'soft'),(title,'')],width)
             else:self.write(y,x,[(event,'mute')],width)
             y+=1
-        if len(events)>len(shown) and y<bottom:self.write(y,x,[(f'+ {len(events)-len(shown)} weitere Termine in den nächsten 14 Tagen','mute')],width);y+=1
+        if len(events)>len(shown) and y<bottom:self.write(y,x,[(f'+ {len(events)-len(shown)} more events in the next 14 days','mute')],width);y+=1
         return y
 
     def view_overview(self,start,bottom):
@@ -617,10 +617,10 @@ class Interface:
                       key=lambda note:(note['evidence']!='disputed',hive.freshness(note)!='stale',note.get('stale_after',''),note['title'].casefold()))
         pending=sum(not item.get('processed') for item in self.data['inbox'])
         def due(note):
-            if note['evidence']=='disputed':return [('umstritten','error')]
+            if note['evidence']=='disputed':return [('disputed','error')]
             if hive.freshness(note)!='stale':return [(constellation.EVIDENCE.get(note['evidence'],note['evidence']),'mute')]
             days=(now-hive.timestamp(note['stale_after'])).days
-            return [('fällig seit '+('einem Tag' if days==1 else f'{days} Tagen') if days>0 else 'heute fällig','due')]
+            return [('overdue by '+('one day' if days==1 else f'{days} days') if days>0 else 'due today','due')]
         rows=[self.note_row(note,due(note)) for note in review]
         pending_work=[item for item in self.data.get('work_items',[]) if item['state'] in {'open','waiting'}]
         def show_work(y,x,room):
@@ -629,20 +629,20 @@ class Interface:
                 from . import work_items
             else:
                 import work_items
-            self.section(y,x,'Offene Arbeit',len(pending_work));y+=1
+            self.section(y,x,'Open work',len(pending_work));y+=1
             for item in pending_work[:min(3,max(0,bottom-y-2))]:
                 self.write(y,x,[(work_items.LABELS[item['state']]+' · ','accent'),(clean(item['text']),'')],room);y+=1
             return y+1
         background=self.data.get('background') or {};job=self.data['job'];agenda=self.data['agenda'];state,tone=_background_state(self.data)
         beat=next((background.get(key) for key in ('heartbeat_at','heartbeat','last_tick_at','updated_at','last_run_at') if isinstance(background,dict) and background.get(key)),None)
-        status=[('Hintergrund',tone,state+('  ·  '+_when(beat) if beat else ''),clean(background.get('message','')) if tone!='ok' else ''),
-                ('Abgleich',TONES.get(job.get('status'),'mute'),STATUS.get(job.get('status'),'unbekannt'),clean(job.get('message','')) if job.get('status') in ('failed','partial','blocked') else ''),
-                ('Kalender',TONES.get(agenda.get('status'),'mute'),STATUS.get(agenda.get('status'),'unbekannt')+'  ·  '+_when(agenda.get('exported_at')),'')]
-        empty='Nichts fällig. Dein Wissen ist im Prüfzeitraum.'
+        status=[('Background',tone,state+('  ·  '+_when(beat) if beat else ''),clean(background.get('message','')) if tone!='ok' else ''),
+                ('Sync',TONES.get(job.get('status'),'mute'),STATUS.get(job.get('status'),'unknown'),clean(job.get('message','')) if job.get('status') in ('failed','partial','blocked') else ''),
+                ('Calendar',TONES.get(agenda.get('status'),'mute'),STATUS.get(agenda.get('status'),'unknown')+'  ·  '+_when(agenda.get('exported_at')),'')]
+        empty='Nothing due. Your knowledge is within its review period.'
         if width<118 or bottom-start<24:
             y=start
             if pending_work and bottom-start<10:
-                self.line(y,'ÜBERSICHT / '+str(len(notes))+' NOTIZEN',self.accent)
+                self.line(y,'OVERVIEW / '+str(len(notes))+' NOTES',self.accent)
                 show_work(y+1,3,width-6)
                 self.items=rows
                 return
@@ -651,31 +651,31 @@ class Interface:
             elif bottom-start>=12:
                 y=self.wordmark(y,3,compact=True)
             else:
-                self.line(y,'ÜBERSICHT',self.accent);y+=1
-            self.write(y,3,[(str(len(notes)),'strong'),(' Notizen     ','soft'),(str(pending),'strong'),(' im Eingang     ','soft'),(str(len(review)),'strong'),(' zur Prüfung','soft')]);y+=2
+                self.line(y,'OVERVIEW',self.accent);y+=1
+            self.write(y,3,[(str(len(notes)),'strong'),(' notes     ','soft'),(str(pending),'strong'),(' in inbox     ','soft'),(str(len(review)),'strong'),(' to review','soft')]);y+=2
             for label,tone,value,message in status:
                 self.write(y,3,[('●',tone),('  '+label.ljust(13),'soft'),(value,'')]+([('  '+message,'mute')] if message else []));y+=1
             y+=1
             y=show_work(y,3,width-6)
-            if y+7<bottom:self.section(y,3,'Termine');y=self.agenda(y+1,3,width-6,bottom-4,3)+1
-            if y<bottom-1:self.section(y,3,'Zur Prüfung',len(review));self.show_list(rows,y+1,bottom,empty)
+            if y+7<bottom:self.section(y,3,'Events');y=self.agenda(y+1,3,width-6,bottom-4,3)+1
+            if y<bottom-1:self.section(y,3,'To review',len(review));self.show_list(rows,y+1,bottom,empty)
             return
         split=int(width*.56);right=split+4;room=width-right-3
         brand_bottom=self.wordmark(start,3)
-        y=show_work(brand_bottom+2,3,split-6);self.section(y,3,'Heute und demnächst');y=self.agenda(y+1,3,split-6,bottom-6)+1
-        self.section(y,3,'Zur Prüfung',len(review));self.show_list(rows,y+1,bottom,empty,split-8)
+        y=show_work(brand_bottom+2,3,split-6);self.section(y,3,'Today and upcoming');y=self.agenda(y+1,3,split-6,bottom-6)+1
+        self.section(y,3,'To review',len(review));self.show_list(rows,y+1,bottom,empty,split-8)
         # Right column: how the hive is doing.
-        y=start;self.section(y,right,'Betrieb');y+=1
+        y=start;self.section(y,right,'Status');y+=1
         for label,tone,value,message in status:
             self.write(y,right,[('●',tone),('  '+label.ljust(13),'soft'),(value,'')],room);y+=1
             for line in wrap(message,room-16)[:2] if message else []:self.write(y,right+16,[(line,'mute')],room-16);y+=1
-        y+=1;self.section(y,right,'Quellen',len(self.data['sources']));y+=1
+        y+=1;self.section(y,right,'Sources',len(self.data['sources']));y+=1
         for row in self.data['sources'][:max(0,min(9,bottom-y-8))]:
             when=_when(row.get('last_complete_at'))
             self.write(y,right,[('●',TONES.get(row.get('status'),'mute')),('  '+row.get('title',row['id']),'')],room-len(when)-2);self.write(y,right+room-len(when),[(when,'mute')]);y+=1
-        y+=1;self.section(y,right,'Wissen');y+=1
+        y+=1;self.section(y,right,'Knowledge');y+=1
         confirmed=sum(note['evidence']=='confirmed' for note in notes.values())
-        for first,label,second,other in ((len(notes),'Notizen',len(self.sky.edges),'Verbindungen'),(confirmed,'bestätigt',pending,'im Eingang')):
+        for first,label,second,other in ((len(notes),'notes',len(self.sky.edges),'connections'),(confirmed,'confirmed',pending,'in inbox')):
             self.write(y,right,[(f'{first:>4}','strong'),('  '+label.ljust(14),'soft'),(f'{second:>4}','strong'),('  '+other,'soft')],room);y+=1
         y+=1
         if y+2<bottom and notes:
@@ -691,11 +691,11 @@ class Interface:
                 x=self.write(y,x,[(label+' ','soft'),(str(count),key)])+3
 
     def view_notes(self,start,bottom):
-        self.line(start,'WISSEN   /   '+('Suche: '+self.query if self.query else 'Alle aktiven Notizen'),self.accent)
-        self.line(start+1,'/ suchen   h '+('aktive Notizen' if self.history else 'Archiv')+'   Enter lesen   y hilfreich / u unbrauchbar',self.dim)
-        self.line(start+2,'w Warum   a Auswirkung   e Erfahrungen   D Änderungen',self.dim)
+        self.line(start,'KNOWLEDGE   /   '+('Search: '+self.query if self.query else 'All active notes'),self.accent)
+        self.line(start+1,'/ search   h '+('active notes' if self.history else 'archive')+'   Enter read   y helpful / u unhelpful',self.dim)
+        self.line(start+2,'w why   a impact   e lessons   D changes',self.dim)
         values=self.notes()
-        self.show_list([self.note_row(note) for note in values],start+3,bottom,'Keine Treffer.' if self.query else 'Noch keine Notizen.')
+        self.show_list([self.note_row(note) for note in values],start+3,bottom,'No results.' if self.query else 'No notes yet.')
 
     def view_network(self,start,bottom):
         """Living tissue of all notes; Enter focuses a cell and travels along its links."""
@@ -709,18 +709,18 @@ class Interface:
             self.selection=next((index for index,item in enumerate(self.items) if item['id']==self.network_return),0);self.network_return=None
         self.selection=max(0,min(self.selection,len(self.items)-1))
         _,width=self.screen.getmaxyx();lapse=self.sky.timelapse;now=time.monotonic()
-        heading='NETZ   /   '+('ZEITRAFFER' if lapse else 'FOKUS   ·   '+self.sky.names.get(self.network_focus,'') if self.network_focus else 'LEBENDES WISSEN')+('   ·   Suche: '+self.query if self.query and not self.network_focus and not lapse else '')
-        stats=f'{len(notes)} NOTIZEN  ·  {len(self.sky.edges)} VERBINDUNGEN' if cells(heading)+40<width else ''
-        if lapse:hints='z oder Esc beendet den Zeitraffer'
-        elif self.network_focus:hints='↑↓ Nachbar   Enter hinüber   ⌫ zurück   d lesen   Esc Gesamtbild'
-        else:hints='↑↓ Notiz   Enter Fokus   / suchen   z Zeitraffer'
-        hints+='   w Warum   a Auswirkung   e Erfahrungen'
-        hints+='   f '+('Rahmen' if self.immersive else 'Vollbild')+'   Leertaste '+('anhalten' if self.sky.motion else 'bewegen')
-        if self.glow and self.glow.backdrop:hints+='   l Licht '+('aus' if self.sky.light else 'an')
+        heading='NETWORK   /   '+('TIMELAPSE' if lapse else 'FOCUS   ·   '+self.sky.names.get(self.network_focus,'') if self.network_focus else 'LIVING KNOWLEDGE')+('   ·   Search: '+self.query if self.query and not self.network_focus and not lapse else '')
+        stats=f'{len(notes)} NOTES  ·  {len(self.sky.edges)} CONNECTIONS' if cells(heading)+40<width else ''
+        if lapse:hints='z or Esc exits the timelapse'
+        elif self.network_focus:hints='↑↓ neighbor   Enter follow   ⌫ back   d read   Esc overview'
+        else:hints='↑↓ note   Enter focus   / search   z timelapse'
+        hints+='   w why   a impact   e lessons'
+        hints+='   f '+('frame' if self.immersive else 'full screen')+'   Space '+('pause' if self.sky.motion else 'resume')
+        if self.glow and self.glow.backdrop:hints+='   l light '+('off' if self.sky.light else 'on')
         if self.immersive:
             # Full screen: the hints fade after a few quiet seconds and return with any key.
             quiet=now-self.last_key;fade=7 if quiet<4 else int(7*(1-(quiet-4)/1.5)) if quiet<5.5 else -1
-            hints+='   m Erinnerungen   1–5 Ansicht   q Ende'+('   ·   '+self.notice if self.notice else '')
+            hints+='   m memories   1–5 views   q quit'+('   ·   '+self.notice if self.notice else '')
             header=((heading,12,stats),(hints,fade) if fade>=0 else ('',0));top,left,rows,cols=start,0,bottom-start,width-1
         else:
             self.line(start,heading,self.accent)
@@ -739,23 +739,23 @@ class Interface:
         try:
             with hive.locked(self.root,shared=(self.root/'.hive.lock').exists()):events=hive.events(self.root)
             rows=sorted(((hive.timestamp(event['at']),[change['id'] for change in event['changes'] if change['before'] is None],[change['id'] for change in event['changes']],clean(event.get('reason','')),clean(event.get('actor',''))) for event in events),key=lambda row:row[0])
-        except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as exc:self.notice='Zeitraffer: '+str(exc);return
+        except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as exc:self.notice='Timelapse: '+str(exc);return
         self.network_focus=None;self.trail=[];self.reset_view()
-        if not self.sky.start_timelapse(rows,time.monotonic()):self.notice='Noch keine protokollierte Entwicklung.'
+        if not self.sky.start_timelapse(rows,time.monotonic()):self.notice='No recorded history yet.'
 
     def view_inbox(self,start,bottom):
-        self.line(start,'EINGANG   /   EIN GEDANKE GENÜGT.',self.accent)
-        self.line(start+1,'n festhalten   Enter lesen   ·   wird beim nächsten Abgleich kuratiert',self.dim)
+        self.line(start,'INBOX   /   CAPTURE A THOUGHT.',self.accent)
+        self.line(start+1,'n capture   Enter read   ·   curated during the next sync',self.dim)
         self.show_list([{'id':item['id'],'kind':'inbox','parts':[('✓' if item.get('processed') else '○','ok' if item.get('processed') else 'accent'),('  '+item['title'],'soft' if item.get('processed') else '')],
-                         'right':[('kuratiert  ' if item.get('processed') else 'offen  ','ok' if item.get('processed') else 'accent'),(_when(item.get('created_at')),'mute')]} for item in self.data['inbox']],
-                       start+3,bottom,'Dein Eingang ist leer. Mit n einen Gedanken festhalten.')
+                         'right':[('curated  ' if item.get('processed') else 'pending  ','ok' if item.get('processed') else 'accent'),(_when(item.get('created_at')),'mute')]} for item in self.data['inbox']],
+                       start+3,bottom,'Your inbox is empty. Press n to capture a thought.')
 
     def view_sources(self,start,bottom):
-        self.line(start,'QUELLEN   /   HERKUNFT BLEIBT SICHTBAR.',self.accent)
-        self.line(start+1,'Stand beschreibt den letzten geprüften Zeitraum. Enter für Details.',self.dim)
+        self.line(start,'SOURCES   /   KEEP THE ORIGIN VISIBLE.',self.accent)
+        self.line(start+1,'Status reflects the last checked period. Enter for details.',self.dim)
         self.show_list([{'id':row['id'],'kind':'source','parts':[('●',TONES.get(row.get('status'),'mute')),('  '+row.get('title',row['id']),'')],
                          'right':[(STATUS.get(row.get('status'),str(row.get('status')))+'  ',TONES.get(row.get('status'),'mute')),(_when(row.get('last_complete_at')),'mute')]} for row in self.data['sources']],
-                       start+3,bottom,'Noch keine Quellen ausgewählt.')
+                       start+3,bottom,'No sources selected yet.')
 
     def detail_lines(self,width):
         key=(self.detail,self.sources,width)
@@ -769,13 +769,13 @@ class Interface:
         def body(text):
             for raw in clean(text).splitlines() or ['']:add(raw,'shade' if raw.startswith('#') else 'mute' if raw.startswith('[^') else '')
         if kind=='insight':
-            add(self.insight['title'],'accent');add('↑↓ / Bild↓ scrollen   Esc zurück','mute');add('')
+            add(self.insight['title'],'accent');add('↑↓ / Page Down scroll   Esc back','mute');add('')
             body(self.insight['text'].partition('\n')[2]);return lines
         if kind=='note':
             note=self.data['notes'].get(ident)
-            if not note:return [('Diese Notiz wurde inzwischen verändert. Zurück und neu öffnen.','due')]
+            if not note:return [('This note has changed. Go back and open it again.','due')]
             if self.sources:
-                add('QUELLEN / '+note['title'],'accent');add('');add('o Notiztext   Esc zurück','mute');add('')
+                add('SOURCES / '+note['title'],'accent');add('');add('o note text   Esc back','mute');add('')
                 for source in note['sources']:
                     add(source['title']);add(source['resource'],'soft')
                     for key in ('observed_at','modified_at','sha256'):
@@ -785,12 +785,12 @@ class Interface:
             stale=hive.freshness(note)=='stale'
             add(note['title'],'accent');add('')
             add(hive.cluster_for(note)+' / '+note['status']+' / '+note['evidence'],MARKS.get(note['evidence'],('','soft'))[1] if note['evidence']!='reported' else 'soft')
-            add('Prüfung: '+('fällig' if stale else 'im Zeitraum')+' · '+str(note.get('stale_after','')),'due' if stale else 'mute')
+            add('Review: '+('due' if stale else 'within period')+' · '+str(note.get('stale_after','')),'due' if stale else 'mute')
             handoff=note.get('handoff')
             if isinstance(handoff,dict):
-                add('Aktuelle Übergabe: '+hive.GERMAN_EVIDENCE.get(handoff.get('evidence'),'nicht eingeordnet')+
-                    ' · '+str(handoff.get('observed_at','nicht datiert'))+' · Quelle '+str(handoff.get('source_id','nicht zugeordnet')),'due')
-                add('Der Notizstatus verifiziert diese Übergabe nicht.','mute')
+                add('Current handoff: '+hive.EVIDENCE_LABELS.get(handoff.get('evidence'),'unclassified')+
+                    ' · '+str(handoff.get('observed_at','undated'))+' · Source '+str(handoff.get('source_id','unassigned')),'due')
+                add('The note status does not verify this handoff.','mute')
             if note['type']=='project':
                 if __package__:
                     from . import work_items
@@ -798,47 +798,47 @@ class Interface:
                     import work_items
                 for item in work_items.read(note):
                     add(work_items.line(item),'soft')
-                    add('Quelle '+item['source_id']+' · '+item['observed_at']+' · '+item['evidence'],'mute')
-            add('');add(note['summary']);add('');add('o Quellen   g Nachbarschaft   ↑↓ / Bild↓ scrollen   Esc zurück','mute')
-            add('w Warum   a Auswirkung   e Erfahrungen   D Änderungen','mute');add('');body(note['body'])
+                    add('Source '+item['source_id']+' · '+item['observed_at']+' · '+item['evidence'],'mute')
+            add('');add(note['summary']);add('');add('o sources   g neighbors   ↑↓ / Page Down scroll   Esc back','mute')
+            add('w why   a impact   e lessons   D changes','mute');add('');body(note['body'])
             return lines
         if kind=='inbox':
             try:item=ingest.read_source(self.root,ident)
-            except (OSError,ValueError) as exc:return [('Gedanke konnte nicht gelesen werden: '+str(exc),'error')]
-            add('EINGANG / '+ident,'accent');add('');add('Esc zurück','mute');add('');body(item['content']);return lines
+            except (OSError,ValueError) as exc:return [('Could not read thought: '+str(exc),'error')]
+            add('INBOX / '+ident,'accent');add('');add('Esc back','mute');add('');body(item['content']);return lines
         row=next((row for row in self.data['sources'] if row['id']==ident),None)
-        if not row:return [('Quelle ist nicht mehr konfiguriert.','due')]
-        add('QUELLE / '+row.get('title',ident),'accent');add('');add(STATUS.get(row.get('status'),'unbekannt'),TONES.get(row.get('status'),'mute'))
-        add('Letzter vollständiger Stand: '+_when(row.get('last_complete_at')),'soft');add('Letzter Versuch: '+_when(row.get('attempted_at')),'soft')
-        add('');add(row.get('detail') or '');add('');add('Esc zurück','mute')
+        if not row:return [('Source is no longer configured.','due')]
+        add('SOURCE / '+row.get('title',ident),'accent');add('');add(STATUS.get(row.get('status'),'unknown'),TONES.get(row.get('status'),'mute'))
+        add('Last complete: '+_when(row.get('last_complete_at')),'soft');add('Last attempt: '+_when(row.get('attempted_at')),'soft')
+        add('');add(row.get('detail') or '');add('');add('Esc back','mute')
         try:
             source=ingest.read_source(self.root,ident)
             add('');add(source['path'],'soft');add('SHA256 '+source['sha256'],'mute');add('');body(source['content'])
         except ValueError:pass # Remote metadata has no local raw document.
-        except OSError as exc:add('');add('Quelle konnte nicht gelesen werden: '+str(exc),'error')
+        except OSError as exc:add('');add('Could not read source: '+str(exc),'error')
         return lines
 
     def draw_modal(self):
         height,width=self.screen.getmaxyx();self.screen.erase();self.rule(1)
         if self.modal=='search':
-            self.line(3,'SUCHE / WISSEN UND VERBINDUNGEN',self.accent)
-            self.line(5,'Enter suchen   Esc abbrechen',self.dim)
+            self.line(3,'SEARCH / KNOWLEDGE AND CONNECTIONS',self.accent)
+            self.line(5,'Enter search   Esc cancel',self.dim)
             self.line(8,'› '+self.input[-max(1,width-10):],self.accent)
             self.rule(height-3)
-            self.line(height-2,'Wörtliche Suche im lokalen Wissensindex.',self.dim)
+            self.line(height-2,'Literal search in the local knowledge index.',self.dim)
             return
-        self.line(3,'GEDANKE FESTHALTEN',self.accent)
-        self.line(5,'Enter: Text beginnen / neue Zeile   Tab: Titel ↔ Text',self.dim)
-        self.line(6,'Ctrl+G oder Ctrl+S speichern   Esc verwerfen',self.dim)
-        self.line(8,'TITEL'+('  ←' if self.capture_field=='title' else ''),self.dim)
-        self.line(9,self.capture_title or 'Optionaler Titel',self.accent if self.capture_field=='title' else 0)
-        self.line(11,'GEDANKE'+('  ←' if self.capture_field=='body' else ''),self.dim)
-        lines=wrap(self.capture_body or 'Schreib oder diktiere hier deinen Gedanken.',max(12,width-7))
+        self.line(3,'CAPTURE A THOUGHT',self.accent)
+        self.line(5,'Enter: start text / new line   Tab: title ↔ text',self.dim)
+        self.line(6,'Ctrl+G or Ctrl+S save   Esc discard',self.dim)
+        self.line(8,'TITLE'+('  ←' if self.capture_field=='title' else ''),self.dim)
+        self.line(9,self.capture_title or 'Optional title',self.accent if self.capture_field=='title' else 0)
+        self.line(11,'THOUGHT'+('  ←' if self.capture_field=='body' else ''),self.dim)
+        lines=wrap(self.capture_body or 'Write or dictate your thought here.',max(12,width-7))
         available=max(1,height-16)
         for y,line in enumerate(lines[-available:],12):self.line(y,line)
         self.rule(height-3)
         self.line(height-4,self.notice,self.dim)
-        self.line(height-2,f'{len(self.capture_body)} / 24000 Zeichen · bleibt zunächst im Eingang',self.dim)
+        self.line(height-2,f'{len(self.capture_body)} / 24000 characters · stays in the inbox for now',self.dim)
 
     def paint(self):
         height,width=self.screen.getmaxyx()
@@ -846,8 +846,8 @@ class Interface:
         if self.glow and self.glow.front is not None and not (self.tab==2 and not self.detail and not self.modal and self.data.get('valid') and height>=17 and width>=54):self.clear()
         self.screen.erase();self.items=[]
         if height<17 or width<54:
-            self.put(1,1,'HIVEMIND / Terminal bitte vergrößern.',self.accent)
-            self.put(3,1,'Mindestens 54 × 17. q schließt nur diese Ansicht.')
+            self.put(1,1,'HIVEMIND / Please enlarge the terminal.',self.accent)
+            self.put(3,1,'At least 54 × 17. q closes this view.')
             self.screen.refresh();return
         if self.modal:self.draw_modal();self.screen.refresh();return
         if self.tab==2 and self.immersive and not self.detail and self.data.get('valid'):
@@ -855,9 +855,9 @@ class Interface:
         # Header: the mark, the background's state and the time.
         state,tone=_background_state(self.data);clock=dt.datetime.now().strftime('%d.%m.%Y  %H:%M' if width>=100 else '%H:%M')
         self.write(1,3,[('HIVE','accent'),('MIND','ivory')])
-        status=[('● ',tone),('Hintergrund '+state,'soft'),('     '+clock,'mute')]
+        status=[('● ',tone),('Background '+state,'soft'),('     '+clock,'mute')]
         status_left=max(14,width-3-sum(cells(text) for text,_ in status))
-        if status_left>=40:self.put(1,14,'Dein persönliches Wissen',self.tone['mute'])
+        if status_left>=40:self.put(1,14,'Your personal knowledge',self.tone['mute'])
         self.write(1,status_left,status)
         x=3;pending=sum(not item.get('processed') for item in self.data.get('inbox',[]))
         underline=None
@@ -876,16 +876,16 @@ class Interface:
         else:(self.view_overview,self.view_notes,self.view_network,self.view_inbox,self.view_sources)[self.tab](6,bottom)
         self.rule(height-5)
         compact=width<100
-        hints='D Änderungen · w Warum · a Wirkung · e Erfahrungen' if compact else 'D Änderungen und offene Punkte · w Warum · a Auswirkung · e Erfahrungen'
+        hints='D changes · w why · a impact · e lessons' if compact else 'D changes and open items · w why · a impact · e lessons'
         self.put(height-4,3,self.notice or hints,self.tone[_tone(self.notice)] if self.notice else self.tone['mute'])
         x=3
-        shortcuts = [('1–5','Tabs' if compact else 'Ansicht'), ('m','Wissen' if compact else 'Erinnerungen')]
+        shortcuts = [('1–5','Tabs' if compact else 'Views'), ('m','Memory' if width<70 else 'Memories')]
         if (self.root / '.hivemind.json').is_file():
-            shortcuts.append(('s','Quellen'))
-            shortcuts.append(('b','Auto' if compact else 'Automatik'))
-        shortcuts.extend([('q','Ende'), ('/','Suche'), ('n','Neu' if compact else 'Gedanke')])
+            shortcuts.append(('s','Sources'))
+            shortcuts.append(('b','Auto' if compact else 'Automation'))
+        shortcuts.extend([('q','Quit'), ('/','Search'), ('n','New' if compact else 'Thought')])
         if not (self.root / '.hivemind.json').is_file():
-            shortcuts.extend([('s','Sync' if compact else 'Abgleich'), ('r','Kal.' if compact else 'Kalender')])
+            shortcuts.extend([('s','Sync'), ('r','Cal.' if compact else 'Calendar')])
         for key,label in shortcuts:
             x=self.write(height-2,x,[(key,'accent'),(' '+label,'mute')])+(1 if compact else 3)
         self.present()
@@ -910,7 +910,7 @@ class Interface:
         ident=self.selected_note()
         try:
             if kind in ('explain','impact'):
-                if not ident:raise ValueError('Zuerst eine Notiz auswählen.')
+                if not ident:raise ValueError('Select a note first.')
                 result=getattr(insights,kind)(self.root,ident)
             else:
                 note=self.data['notes'].get(ident,{})
@@ -929,11 +929,11 @@ class Interface:
 
     def search_feedback(self,helpful):
         if not self.query or self.tab not in (1,2):
-            self.notice='Zuerst eine Suche ausführen.';return
+            self.notice='Run a search first.';return
         try:
             hive.feedback(self.root,self.query,helpful,result_ids=[n['id'] for n in self.notes()[:20]],actor='terminal-user')
-            self.notice='Suchfeedback gespeichert: '+('hilfreich.' if helpful else 'unbrauchbar.')
-        except (OSError,ValueError) as exc:self.notice='Suchfeedback: '+str(exc)
+            self.notice='Search feedback saved: '+('helpful.' if helpful else 'unhelpful.')
+        except (OSError,ValueError) as exc:self.notice='Search feedback: '+str(exc)
 
     def switch(self,tab):
         """Change tabs; entering Netz wakes its tissue."""
@@ -952,7 +952,7 @@ class Interface:
         if key in ('\x07','\x13'):
             try:
                 result=ingest.capture(self.root,self.capture_body,self.capture_title)
-                self.modal=None;self.reload();self.notice='Gedanke gespeichert · '+result['title']
+                self.modal=None;self.reload();self.notice='Thought saved · '+result['title']
             except (OSError,ValueError) as exc:self.notice=str(exc)
             return
         if key=='\t':self.capture_field='body' if self.capture_field=='title' else 'title';return
@@ -1117,14 +1117,14 @@ def run(root=None, initial_view='overview'):
     except KeyboardInterrupt:
         return 0
     except curses.error as exc:
-        print('Das Terminal konnte nicht initialisiert werden: '+str(exc),file=sys.stderr)
+        print('Could not initialize the terminal: '+str(exc),file=sys.stderr)
         print(render_plain(root),end='');return 1
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',type=Path,default=default_vault())
-    parser.add_argument('--plain',action='store_true',help='Einen lokalen Textstand ausgeben, ohne interaktive Oberfläche.')
+    parser.add_argument('--plain',action='store_true',help='Print local status without the interactive interface.')
     args=parser.parse_args()
     if args.plain:
         data=snapshot(args.root);print(render_plain(args.root,data=data),end='');raise SystemExit(0 if data['valid'] else 1)
