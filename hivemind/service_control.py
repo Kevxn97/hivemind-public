@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 from . import hive
-from .runtime_paths import cli_command, require_vault
+from .runtime_paths import CODE, cli_command, require_vault
 
 
 def spec(root, *, directory=None, platform=None):
@@ -23,7 +23,7 @@ def spec(root, *, directory=None, platform=None):
         folder = Path(directory) if directory else Path.home()/'Library/LaunchAgents'
         path = folder/(label+'.plist')
         data = plistlib.dumps({'Label': label, 'ProgramArguments': command,
-            'WorkingDirectory': str(root), 'RunAtLoad': True, 'KeepAlive': True,
+            'WorkingDirectory': str(CODE.parent), 'RunAtLoad': True, 'KeepAlive': True,
             'ThrottleInterval': 30, 'ProcessType': 'Background',
             'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
                                      'PYTHONDONTWRITEBYTECODE': '1'},
@@ -35,7 +35,7 @@ def spec(root, *, directory=None, platform=None):
         def quote(value):
             return json.dumps(str(value)).replace('%','%%').replace('$','$$')
         data = ('[Unit]\nDescription=HiveMind local vault scheduler\n\n[Service]\nType=simple\n'
-            'ExecStart='+' '.join(map(quote,command))+'\nWorkingDirectory='+quote(root)+'\n'
+            'ExecStart='+' '.join(map(quote,command))+'\nWorkingDirectory='+quote(CODE.parent)+'\n'
             'Restart=on-failure\nRestartSec=30\nEnvironment=PYTHONDONTWRITEBYTECODE=1\n'
             'StandardOutput=null\nStandardError=null\n\n[Install]\nWantedBy=default.target\n').encode()
     else:
@@ -67,8 +67,11 @@ def status(root):
     try:
         selected = spec(root)
         record = _owned(root, selected)
-        return {'installed':bool(record and Path(selected['path']).is_file()),
-                'label':selected['label'],'path':selected['path'],'supported':True}
+        installed=bool(record and Path(selected['path']).is_file())
+        stale=installed and record['sha256']!=hashlib.sha256(selected['data']).hexdigest()
+        return {'installed':installed,'needs_update':stale,
+                'label':selected['label'],'path':selected['path'],'supported':True,
+                'repair':'Preview and apply hive automation enable background.' if stale else None}
     except ValueError as error:
         return {'installed':False,'supported':False,'error':str(error)}
 

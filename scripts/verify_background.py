@@ -91,7 +91,7 @@ class BackgroundE2E(unittest.TestCase):
   self.tick();p=self.root/'.state/background.json';self.assertEqual(p.stat().st_mode&0o777,0o600);self.assertEqual((self.root/'.state').stat().st_mode&0o777,0o700);self.assertNotIn('Synthetic selected input',p.read_text())
  def test_single_daemon_and_stop_does_not_stop_job(self):
   self.config['enabled']=False;self.write_config();cmd=[sys.executable,'-c',HELPER,str(BASE),str(self.root),json.dumps({'at':'2026-10-20T08:00:00+02:00','run':True})]
-  p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True);self.children.append(p)
+  p=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);self.children.append(p)
   limit=time.time()+5
   while time.time()<limit:
    state=self.root/'.state/background.json'

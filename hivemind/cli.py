@@ -19,10 +19,7 @@ def _parser():
     init.add_argument('--agent', choices=('codex', 'claude', 'none'), help='Prepare the selected agent connection')
     from . import connections
     connections.configure(sub)
-    doctor = sub.add_parser('doctor', help='Inspect the selected vault and local integration without writing')
-    doctor.add_argument('--home', type=Path)
-    doctor.add_argument('--codex-home', type=Path)
-    doctor.add_argument('--claude-home', type=Path)
+    workflow_cli.configure_doctor(sub)
     test = sub.add_parser('self-test', help='Prove a first memory round trip in an isolated synthetic vault')
     test.add_argument('--evidence-dir', type=Path)
     demo = sub.add_parser('demo', help='Replay a synthetic decision, session switch and correction')
@@ -39,17 +36,8 @@ def _parser():
 
 
 def diagnose(root, home=None, codex_home=None, claude_home=None):
-    from . import connections, doctor
-    canonical, records = doctor._canonical(root)
-    checks = [canonical, doctor._projects(root, records), doctor._sessions(root)]
-    for agent, explicit in (('codex', codex_home), ('claude', claude_home)):
-        folder = explicit or (Path(home) / ('.' + agent) if home else None)
-        result = connections.inspect(root, agent, agent_home=folder)
-        checks.extend(result['checks'])
-    summary = {status: sum(c['status'] == status for c in checks) for status in ('ok', 'attention', 'error')}
-    return {'status': 'error' if summary['error'] else 'attention' if summary['attention'] else 'ok',
-            'scope': 'read_only_disk_snapshot', 'host_execution': 'unverified',
-            'summary': summary, 'checks': checks}
+    from . import doctor
+    return doctor.inspect(root, home, codex_home=codex_home, claude_home=claude_home)
 
 
 def _initialize(args, root):
@@ -93,8 +81,10 @@ def main(argv=None):
               'Automate: hive automation (guided source sync, background startup, weekly review)\n'
               'Sources:  hive sources; hive sources setup gmail|calendar|mcp --agent codex|claude\n'
               'Context:  hive brief PATH; hive session-open PATH --agent codex\n'
-              'Handoff:  hive session-draft ID --out FILE; hive session-close ID --file FILE\n'
+              'Handoff:  hive session-close ID --record --help (simple sourced delta)\n'
+              '          hive session-draft ID --out FILE; hive session-close ID --file FILE (structured)\n'
               'Inspect:  hive browse; hive search TEXT; hive show ID; hive check\n'
+              'External edit: hive adopt ID --help\n'
               'Terminal: hive\n\n'
               'Vault: --root PATH > HIVEMIND_HOME > ~/.local/share/hivemind\n'
               'Add --json for machine-readable output. Use COMMAND --help for details.')

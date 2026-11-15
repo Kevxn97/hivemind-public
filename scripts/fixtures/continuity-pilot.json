@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "cluster": "projects/continuity-pilot",
+  "project_name": "Continuity Pilot",
+  "sources": ["sources/overview.md", "sources/storage-original.md", "sources/hosted-draft.md"],
+  "fixture": {
+    "observed_at": "2026-01-05T12:00:00Z",
+    "readme": "# Continuity Pilot\n\nA local sandbox importer for fictional batches. The pilot tasks concern project decisions and handoffs. No importer implementation or deployed service exists in this workspace.\n",
+    "source_files": {
+      "sources/overview.md": "# Sandbox importer scope\n\nThe pilot runs locally with fictional batches. Hosted deployment and approval are outside this pilot. No live runtime observation is recorded.\n",
+      "sources/storage-original.md": "# Original storage decision\n\nPostgreSQL was selected for the local sandbox importer to match the planned staging database. This is a reported decision; no runtime check is recorded.\n",
+      "sources/hosted-draft.md": "# Obsolete hosted proposal\n\nA withdrawn draft discussed eu-west-2. This is historical and has no approved region, approved reviewer or rollout authorization.\n"
+    },
+    "notes": [
+      {
+        "id": "continuity-pilot",
+        "type": "project",
+        "title": "Continuity Pilot",
+        "summary": "Local sandbox importer with fictional batches. Hosted deployment is outside the current pilot.",
+        "status": "stable",
+        "source_id": "pilot-overview",
+        "resource": "sources/overview.md"
+      },
+      {
+        "id": "pilot-storage",
+        "type": "decision",
+        "title": "Storage decision",
+        "summary": "Use PostgreSQL locally to match the planned staging database. This is reported; a runtime check is not recorded.",
+        "status": "stable",
+        "source_id": "storage-original",
+        "resource": "sources/storage-original.md"
+      },
+      {
+        "id": "pilot-hosted-draft",
+        "type": "decision",
+        "title": "Withdrawn hosted proposal",
+        "summary": "An obsolete draft mentioned eu-west-2 without recording a decision or approval.",
+        "status": "deprecated",
+        "source_id": "hosted-draft",
+        "resource": "sources/hosted-draft.md"
+      }
+    ]
+  },
+  "repeat_cards": {
+    "original-storage": "The original local selection was PostgreSQL to match planned staging. No runtime check was recorded.",
+    "retry": "We agreed to at most three retries for transient import failures. After the third failed retry, leave the batch in quarantine for manual review to avoid repeated processing.",
+    "corrected-storage": "The corrected local-pilot decision is SQLite because it requires no external service. Hosted storage remains undecided. No runtime check was recorded."
+  },
+  "tasks": [
+    {
+      "id": "01-original-decision",
+      "session": "codex-1",
+      "question": "Which database did we select for the local sandbox importer, and why? Give the source and say whether a runtime check was recorded.",
+      "rescue_cards": ["original-storage"],
+      "criteria": {
+        "database": "Names PostgreSQL as the initial local decision.",
+        "rationale": "Connects it to the planned staging database.",
+        "evidence": "Cites the original storage source and distinguishes the reported decision from a runtime check."
+      }
+    },
+    {
+      "id": "02-save-retry-decision",
+      "session": "codex-1",
+      "question": "We have decided to retry transient import failures at most three times. If the third retry fails, leave the batch in quarantine for manual review to avoid repeated processing. Save this decision and its reason in the project's handoff for a fresh session, then close this session. No implementation is requested.",
+      "rescue_cards": [],
+      "criteria": {
+        "retry-limit": "Records at most three retries and the transient-failure condition.",
+        "fallback": "Records quarantine for manual review after the third failed retry and the reason.",
+        "durable-close": "Leaves a durable, attributable handoff, and the operator can verify the first session closed."
+      }
+    },
+    {
+      "id": "03-recall-retry",
+      "session": "claude-2",
+      "question": "What retry policy did we agree for the sandbox importer? Include the failure condition, the limit, what happens when the limit is reached, and the reason.",
+      "rescue_cards": ["retry"],
+      "criteria": {
+        "retry-limit": "Recalls the transient-failure trigger and three-retry ceiling without a repeated fact.",
+        "fallback": "Recalls quarantine for manual review after the third failed retry without a repeated fact.",
+        "rationale": "Recalls avoiding repeated processing and identifies the previous handoff or its source."
+      }
+    },
+    {
+      "id": "04-correct-storage",
+      "session": "claude-2",
+      "question": "Correction for the local pilot only. Use SQLite because it needs no external service. Storage for a future hosted rollout is undecided. Correct the current project memory and retain the original as history. Then tell me what is current and whether this correction represents a runtime test.",
+      "rescue_cards": [],
+      "criteria": {
+        "current": "Records SQLite as the local choice, with the no-external-service reason and no hosted decision.",
+        "history": "Original PostgreSQL report remains identifiable as superseded history, while the current active storage record contains the correction.",
+        "evidence": "Attributes the correction to this task's operator instruction and describes it as reported without a runtime check."
+      }
+    },
+    {
+      "id": "05-abstain-and-close",
+      "session": "claude-2",
+      "question": "Which production region and which reviewer approved the hosted rollout? Preserve anything still open for the next session and close this session.",
+      "rescue_cards": [],
+      "criteria": {
+        "abstention": "States that the approved region, reviewer and rollout authorization are unrecorded.",
+        "obsolete-draft": "Does not treat the withdrawn eu-west-2 proposal as approval.",
+        "durable-close": "Records the hosted decision as open, preserves the current storage and retry decisions, and the operator can verify this session closed."
+      }
+    },
+    {
+      "id": "06-recall-correction",
+      "session": "codex-3",
+      "question": "Welche Datenbank verwenden wir für den lokalen Pilot und warum? Was steht zum späteren gehosteten Betrieb fest? Nenne den Beleg und sag, ob ein Lauf geprüft wurde.",
+      "rescue_cards": ["corrected-storage"],
+      "criteria": {
+        "current": "Names SQLite as current for the local pilot, with the no-external-service reason and without a repeated fact.",
+        "scope": "Says hosted storage is undecided and does not present PostgreSQL as current.",
+        "evidence": "Identifies the task 04 correction and says no runtime verification is recorded."
+      }
+    },
+    {
+      "id": "07-cross-handoff-truth",
+      "session": "codex-3",
+      "question": "What should happen to a batch after the agreed retry limit is reached? Is there evidence that a production rollout was approved? Close the session once you have answered.",
+      "rescue_cards": ["retry"],
+      "criteria": {
+        "carry-forward": "Correctly links the third failed retry to quarantine for manual review without a repeated fact.",
+        "abstention": "Says the available evidence does not establish production approval.",
+        "no-change-close": "Closes the session without a new durable decision or journal event."
+      }
+    }
+  ]
+}

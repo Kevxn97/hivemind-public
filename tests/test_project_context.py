@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'hivemind'))
 import hive
@@ -128,6 +129,18 @@ class ProjectContextTest(unittest.TestCase):
         self.assertEqual([n['id'] for n in result['selected']], ['demo'])
         self.assertFalse(result['task_match'])
         self.assertIn('No matching task evidence', result['text'])
+
+    def test_search_hit_from_a_concurrent_revision_does_not_select_an_old_excerpt(self):
+        # A deterministic boundary check: a writer can update the FTS index
+        # between the canonical snapshot and search. Matching the newer revision
+        # must not make the older excerpt look relevant to the current task.
+        self.put(note(), note('decision', type='decision', title='Storage engine', body='Use the retired engine.'))
+        corrected_hit = {'id': 'decision', 'revision': 'f' * 64, 'matched_terms': ['sqlite']}
+        with patch.object(hive, 'search', return_value=[corrected_hit]):
+            result = context.task_brief(self.root, 'projects/demo', task='SQLite', budget=400)
+        self.assertEqual([item['id'] for item in result['selected']], ['demo'])
+        self.assertFalse(result['task_match'])
+        self.assertNotIn('Use the retired engine', result['text'])
 
     def test_stale_disputed_evidence_and_scope_remain_visible(self):
         self.put(note(evidence='disputed', stale_after='2000-01-01T00:00:00Z',

@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 
-from . import automation, background, hive, jobs, maintenance, project_context, service_control
+from . import automation, background, hive, jobs, maintenance, project_context, service_control, provider_trust
 from .integrations import ingest
 from .runtime_paths import require_vault
 
@@ -43,7 +43,7 @@ def require_sync(root):
         raise ValueError('Source sync is disabled. Configure a provider and selected sources, then enable sync with hive automation.')
     automation.require_running(root)
     provider_ready(prefs)
-    return prefs
+    return provider_trust.require(root, prefs)
 
 
 def provider_ready(prefs):
@@ -65,9 +65,13 @@ def status(root):
     rows=[dict(row,kind=kind,enabled=row.get('enabled',True)) for kind in ('files','remote') for row in sources[kind]]
     service=service_control.status(root)
     paused=automation.status(root)['paused']
+    provider_error=None
+    try:registered=provider_trust.read(root)
+    except ValueError as exc:registered=None;provider_error=str(exc)
     result={'status':'ok','vault':str(root),'paused':paused,
         'sync':{'enabled':prefs['sync_enabled'],'codex':prefs['codex'],'agent_home':prefs['agent_home'],
-                'host_access':'unverified'},
+                'host_access':'unverified','provider_registered':bool(registered),'provider_error':provider_error,
+                'execution_policy':'read-only proposals; native validation and journal apply'},
         'background':{**service,'enabled':cfg['enabled'],'daemon_running':background.daemon_active(root)},
         'maintenance':{'enabled':prefs['maintenance_enabled'],'day':prefs['maintenance_day'],
                        'hour':prefs['maintenance_hour'],'last_run':maintenance.read(root)},
@@ -87,7 +91,9 @@ def status(root):
         *['  '+row['id']+' · '+state(row['enabled'])+' · '+row.get('path',row.get('scope','')) for row in rows],
         '', 'Background scheduling requires a running service or hive automation serve.',
         'Turning a feature off prevents new runs. Already running sync jobs finish independently.',
-        'Connector login and access belong to the chosen Codex profile.'])
+        'Connector login and access belong to the chosen Codex profile.',
+        *(['Provider approval needs attention: '+provider_error] if provider_error else []),
+        *(['Background service needs an update. Preview hive automation enable background, then apply it.'] if service.get('needs_update') else [])])
     return result
 
 
@@ -120,6 +126,7 @@ def configure(sub):
 def _snapshot(root):
     paths=[*FILES,'.state/automation.json']
     result={name:(Path(root)/name).read_text() if (Path(root)/name).exists() else None for name in paths}
+    result['provider_registration']=provider_trust.snapshot(root)
     for name in paths:
         path=Path(root)/name
         if path.is_symlink() or path.parent.is_symlink():
@@ -148,7 +155,7 @@ def _plan(root,args):
         else:
             prefs[feature+'_enabled']=on;changed=FILES[0]
         if on and feature=='sync':
-            provider_ready(prefs)
+            provider_trust.require(root,prefs)
             if not ingest._selected(root) and not ingest.config(root).get('remote'):
                 raise ValueError('Select at least one source before enabling sync.')
         detail=f"{action.title()} {feature} for this vault."
@@ -163,8 +170,11 @@ def _plan(root,args):
             raise ValueError('Disable sync before changing its provider profile.')
         prefs['codex']=str(Path(args.codex).expanduser().absolute())
         prefs['agent_home']=str(Path(args.agent_home).expanduser().resolve());provider_ready(prefs)
+        registration=provider_trust.candidate(root,prefs)
+        prefs['codex']=registration['codex']
+        prefs['agent_home']=registration['agent_home']
         changed=FILES[0]
-        detail='Use Codex '+prefs['codex']+'\nProfile '+prefs['agent_home']+'\nExisting model, login and permissions are retained. Verify connector access in this profile.'
+        detail='Use Codex '+prefs['codex']+'\nProfile '+prefs['agent_home']+'\nExisting model and login are retained. Sync commands run read-only without escalation; proposals are validated before journal writes. Connector permissions remain in this profile.'
     elif action=='schedule':
         if args.daily_hour is not None:
             if not 0<=args.daily_hour<=23:raise ValueError('Daily hour must be 0..23')
@@ -230,7 +240,7 @@ def _plan(root,args):
     else:
         raise ValueError('Unknown automation action')
     params={k:v for k,v in vars(args).items() if k not in {'apply','preview','json'}}
-    token=hive.digest(json.dumps({'vault':str(root),'before':before,'parameters':params},sort_keys=True,default=str))
+    token=hive.digest(json.dumps({'vault':str(root),'before':before,'parameters':params,'provider':registration if action=='provider' else None},sort_keys=True,default=str))
     return {'status':'preview','applied':False,'preview':token,'text':detail,
             'changes':values if changed=='schedule' else {changed:values[changed]} if changed else {} }
 
@@ -263,6 +273,8 @@ def execute(args,root):
     with _control_lock(root):
         current=_plan(root,args)
         if args.preview!=current['preview']:raise ValueError('Settings changed or preview missing; preview this action again.')
+        if action=='provider':
+            provider_trust.register(root,provider_trust.candidate(root,current['changes'][FILES[0]]))
         for path,value in current['changes'].items():
             # Schedule changes write only actually different files.
             text=json.dumps(value,ensure_ascii=False,indent=2)+'\n'

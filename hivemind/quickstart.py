@@ -15,6 +15,8 @@ def configure(sub):
     parser.add_argument('--name', help='Project name, defaults to the folder name')
     parser.add_argument('--agent', choices=('codex', 'claude', 'none'))
     parser.add_argument('--remember', help='First short memory for the project')
+    parser.add_argument('--remember-type', choices=('decision', 'lesson'), default='lesson',
+                        help='Type of the first memory')
     parser.add_argument('--connect', action='store_true', help='Install the selected agent connection')
     parser.add_argument('--yes', action='store_true', help='Confirm the supplied setup and first memory')
     return parser
@@ -84,19 +86,11 @@ def _bind_project(root, folder, name):
     return project_context.register_project(root, folder, note['cluster'])
 
 
-def _first_memory(root, project, text):
+def _first_memory(root, project, text, note_type):
     from . import source_connections
-    observed = hive.now()
-    for note, _, _ in project_context._records(root).values():
-        if note['summary'] == text and hive.cluster_for(note) == project['cluster']:
-            previous = next((source for source in note['sources'] if source['resource'] == 'user:setup'), None)
-            if previous is not None:
-                observed = previous['observed_at']
-                break
-    selection = {'project': project['cluster'], 'title': 'First memory', 'summary': text,
-                 'source': {'kind': 'manual', 'resource': 'user:setup',
-                            'title': 'First memory entered during setup', 'observed_at': observed}}
-    return source_connections.capture_selection(root, selection, yes=True)
+    selection = source_connections.remember_selection(root, project['cluster'], text, 'user:setup',
+                                                      note_type, setup=True)
+    return source_connections.capture_selection(root, selection, yes=True, note_type=note_type)
 
 
 def _connection(root, agent, interactive, install):
@@ -138,7 +132,7 @@ def _text(result):
             else:
                 lines.append('Review the session hooks in Claude Code, then open a fresh session.')
             lines.append('Try asking “What do you remember about this project?”')
-    lines.extend(['', 'Remember another decision', result['commands']['remember'],
+    lines.extend(['', 'Remember a decision', result['commands']['remember'],
                   '', 'Connect Gmail, Calendar or another source', result['commands']['sources']])
     lines.extend(['','Optional background sync and weekly review',result['commands']['automation'],
                   'Start with everything off; choose sources and activate each feature when ready.'])
@@ -191,11 +185,11 @@ def execute(args, root):
             return {'status': 'cancelled', 'text': 'Setup cancelled. Run setup again when ready.'}
     initialized = onboarding.initialize(root, project_path=folder, name=args.name)
     project = initialized['project'] or _bind_project(root, folder, args.name)
-    memory_result = _first_memory(root, project, memory) if memory else None
+    memory_result = _first_memory(root, project, memory, args.remember_type) if memory else None
     connection = _connection(root, agent, interactive, args.connect)
     commands = {'sources': shlex.join(cli_command(root, 'sources')),
                 'automation': shlex.join(cli_command(root, 'automation')),
-                'remember': shlex.join(cli_command(root, 'remember', 'Your next decision'))}
+                'remember': shlex.join(cli_command(root, 'remember', 'Your next decision', '--type', 'decision'))}
     if agent != 'none':
         commands['connect'] = shlex.join(cli_command(root, 'connect', agent, '--apply'))
     result = {'status': 'ready', 'vault': str(root), 'initialized': initialized['initialized'],

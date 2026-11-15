@@ -6,6 +6,8 @@ accumulated receipts bypass the cap; budget failures mutate a receipt; an old
 revision silently returns latest content; an excerpt cannot be continued; changed
 source bytes masquerade as historical evidence; private/outside/symlink sources
 leak; untrusted headings or unknown refs select unintended content.
+Natural-language glue crowds the topic out; generic and superseded notes beat
+the decision; repeated provenance displaces usable facts at a startup budget.
 """
 import hashlib
 import json
@@ -155,6 +157,87 @@ class CompactContextE2E(unittest.TestCase):
         self.assertIn('EMBEDDED_FACT', packet['context']['text'])
         plain = self.run_cli('hive.py', ['session-open', 'projects/demo'])
         agent_contract.validate('compact-session', plain)
+
+    def add_notes(self, *notes):
+        self.apply({'changes': [{'expected_revision': 'new', 'note': note} for note in notes]})
+
+    def fixture_note(self, ident, title, summary, **fields):
+        note = support.project(ident)
+        note.update(type='decision', cluster='projects/demo', title=title, summary=summary, body=summary)
+        note.update(fields)
+        return note
+
+    def test_bilingual_database_questions_find_the_current_decision_and_abstain(self):
+        self.add_notes(
+            self.fixture_note('storage-choice', 'Storage engine', 'Use SQLite. PostgreSQL was rejected for this pilot.',
+                              links=[{'relation': 'supersedes', 'target': 'old-postgres', 'reason': 'Pilot architecture changed.'}]),
+            self.fixture_note('old-postgres', 'PostgreSQL database decision', 'OLD_POSTGRES was approved.',
+                              status='deprecated'),
+            self.fixture_note('archived-postgres', 'PostgreSQL database decision', 'ARCHIVED_POSTGRES was approved.',
+                              archived=True),
+            self.fixture_note('database-glossary', 'Database glossary', 'PostgreSQL terms, useful for documentation.',
+                              type='lesson'),
+            self.fixture_note('planning', 'Decisions and questions', 'We decide how to carry out project planning.'))
+        questions = ('What did we decide about Postgres?', 'which database do we use',
+                     'Was haben wir zu Postgres entschieden?', 'Welche Datenbank verwenden wir?')
+        for question in questions:
+            rows = self.run_cli('hive.py', ['search', question, '--cluster', 'projects/demo'])
+            with self.subTest(question=question):
+                self.assertTrue(rows, question)
+                self.assertEqual(rows[0]['id'], 'storage-choice')
+                self.assertFalse({'old-postgres', 'archived-postgres', 'planning'} & {row['id'] for row in rows})
+        for question in ('Which database do we use for Quantenwombat?', 'Was haben wir zu Quantenwombat entschieden?',
+                         'What did we decide?', 'Welche Datenbank nutzen wir für Quantenwombat?'):
+            with self.subTest(question=question):
+                self.assertEqual(self.run_cli('hive.py', ['search', question, '--cluster', 'projects/demo']), [])
+        packet = self.cli('session-open', 'projects/demo', '--task', questions[0], '--budget', '500')
+        self.assertIn('Use SQLite. PostgreSQL was rejected', packet['context']['text'])
+        self.assertNotIn('OLD_POSTGRES', packet['context']['text'])
+        self.assertNotIn('ARCHIVED_POSTGRES', packet['context']['text'])
+        unknown = self.cli('session-context', packet['session_id'], '--task', 'Quantenwombat', '--budget', '500')
+        self.assertFalse(unknown['context']['task_match'])
+        self.assertNotIn('Use SQLite', unknown['context']['text'])
+
+    def test_startup_budget_favors_meaningful_note_coverage(self):
+        facts = [
+            'CHECKPOINT: Persist the checkpoint after each acknowledged batch so a crash resumes from the last verified cursor.',
+            'THROTTLING: Respect the bounded retry window when the endpoint reports throttling and record each recovered retry separately.',
+            'STORAGE: Open SQLite read-only for status requests and keep the ingestion writer inside its own transaction.',
+            'EXPORT: Review the generated file locally before exporting and attach the immutable manifest for future comparison.',
+            'HANDOFF: Keep the original source attribution when copying an older agreed decision into a fresh project handoff.',
+        ]
+        self.add_notes(*(self.fixture_note(
+            f'feature-{i}', f'Pilot design {i + 1}', fact, aliases=['pilot design'], evidence=evidence,
+            stale_after='2000-01-01T00:00:00Z' if i == 1 else '2100-01-01T00:00:00Z',
+            verified=[{'by': 'test', 'at': '2026-10-29T10:00:00Z',
+                       'scope': 'Only the dated synthetic observation of one development run on the original sample inputs.'}],
+            sources=[{'id': f'fixture-{i}', 'resource': f'test:pilot/{i}/source/' + 'x' * 90,
+                      'title': f'Original document for decision {i + 1}', 'observed_at': '2026-10-29T10:00:00Z'}],
+        ) for i, (fact, evidence) in enumerate(zip(facts, ['reported', 'disputed', 'confirmed', 'reported', 'inferred']))))
+        hook = self.run_cli('hive.py', ['brief', '--hook', '--agent', 'claude', '--budget', '500'],
+                            stdin=json.dumps({'cwd': str(self.repo)}))['hookSpecificOutput']['additionalContext']
+        compact = self.cli('session-open', 'projects/demo', '--budget', '500')
+        contexts = {'hook': hook, 'compact': compact['context']['text']}
+        self.case['startup_measurements'] = {
+            name: {'bytes': len(value.encode('utf-8')), 'words': len(value.split()),
+                   'meaningful_facts': [fact.split(':')[0] for fact in facts if fact in value]}
+            for name, value in contexts.items()}
+        self.case['startup_measurements']['compact']['wire_bytes'] = compact['budget']['bytes']
+        self.save_report()
+        for name, text in contexts.items():
+            with self.subTest(view=name):
+                self.assertEqual(self.case['startup_measurements'][name]['meaningful_facts'],
+                                 [fact.split(':')[0] for fact in facts])
+                self.assertIn('disputed', text)
+                self.assertIn('Review overdue', text)
+                self.assertNotIn('Selection:', text)
+                self.assertNotIn('No separate verification documented.', text)
+                self.assertNotIn('test:pilot/', text)
+        ref = next(row['ref'] for row in compact['refs'] if row['ref'].startswith('feature-1@'))
+        shown = self.run_cli('hive.py', ['show', 'feature-1'])
+        self.assertEqual(ref, 'feature-1@' + shown['revision'])
+        evidence = self.cli('evidence', ref)
+        self.assertIn('Original document for decision 2', json.dumps(evidence))
 
     def test_plain_evidence_exposes_source_state_and_continuation(self):
         source = self.root / 'sources' / 'observed.txt'; source.parent.mkdir()

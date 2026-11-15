@@ -186,7 +186,18 @@ class SyncPlanTest(unittest.TestCase):
         self.assertEqual({row['id'] for row in manifest['local']}, {'selected', 'other'})
         self.assertEqual(set(manifest['windows']), {'gmail', 'wispr'})
 
+    def prepare_public_job(self):
+        """This fixture tests dispatch recovery, not external provider approval."""
+        from hivemind import feature_controls
+        (self.root/'wiki').mkdir(exist_ok=True)
+        (self.root/'.history').mkdir(exist_ok=True)
+        (self.root/'.hive.lock').touch()
+        (self.root/'.hivemind.json').write_text(json.dumps({'version':1,'kind':'hivemind-vault'}))
+        permission=patch.object(feature_controls,'require_sync',return_value={'codex':'/synthetic/codex'})
+        permission.start();self.addCleanup(permission.stop)
+
     def test_completed_dispatch_is_idempotent_and_receipt_survives_new_job(self):
+        self.prepare_public_job()
         ident = 'a'*32
         plan = ingest.prepare_plan(self.root, source_ids=['selected'], dispatch_id=ident)
         accepted = {'status': 'complete', 'job_id': 'b'*32, 'dispatch_id': ident, 'plan': plan}
@@ -228,10 +239,10 @@ class SyncPlanTest(unittest.TestCase):
         self.assertFalse(recovered['start_failed'])
 
     def test_process_creation_failure_remains_retryable_without_a_provider_run(self):
+        self.prepare_public_job()
         ident = 'd'*32
         plan = ingest.prepare_plan(self.root, source_ids=['selected'], dispatch_id=ident)
-        with patch.object(jobs.shutil, 'which', return_value='/synthetic/codex'), \
-             patch.object(jobs.subprocess, 'Popen', side_effect=OSError('Synthetic spawn failure')) as spawn:
+        with patch.object(jobs.subprocess, 'Popen', side_effect=OSError('Synthetic spawn failure')) as spawn:
             first = jobs.start(self.root, plan=plan, dispatch_id=ident)
             second = jobs.start(self.root, plan=plan, dispatch_id=ident)
         self.assertTrue(first['start_failed'])

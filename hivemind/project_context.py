@@ -172,7 +172,8 @@ def _paragraphs(body):
     for raw in text.split('\n\n'):
         lines = raw.strip().splitlines()
         while lines and lines[0].startswith('#'):
-            heading = lines.pop(0).lstrip('#').strip()
+            title = lines.pop(0)
+            heading = title.lstrip('#').strip() if title.startswith('##') else ''
         paragraph = '\n'.join(lines).strip()
         if paragraph:
             result.append((heading, paragraph))
@@ -290,13 +291,28 @@ def _metadata(item):
         lines.insert(3, 'Current handoff: ' + hive.EVIDENCE_LABELS[handoff['evidence']]
                      + ' · observed ' + handoff['observed_at'] + '; retained fields keep their own evidence.')
     if len(item['sources']) > 1:
-        lines[-1] += f"; {len(item['sources']) - 1} more in `hive note {item['id']}`."
+        lines[-1] += f"; {len(item['sources']) - 1} more in `hive evidence {item['id']}@{item['revision']}`."
     if item['verified']:
         last = max(item['verified'], key=lambda v: hive.timestamp(v['at']))
         lines.append(('Earlier note review: ' if handoff else 'Review recorded in note: ') + last['at'] + '. Scope: ' + _short(last.get('scope', 'not specified'), 18))
     else:
         lines.append('No separate verification documented.')
     return '\n'.join(lines)
+
+
+def _session_metadata(item, scope):
+    handoff = item.get('handoff_evidence')
+    parts = [f"Note evidence: {item['evidence']}", item['status']]
+    if item['freshness'] == 'stale':
+        parts.append('Review overdue (' + item['stale_after'][:10] + ')')
+    if handoff:
+        parts.append(f"Current handoff: {handoff['evidence']}, observed {handoff['observed_at']}")
+        parts.append('Handoff source ' + handoff['source_id'])
+    else:
+        parts.append('Source ' + item['sources'][0]['id'])
+    if item['cluster'] != scope:
+        parts.append(item['cluster'])
+    return f"## {_short(item['title'], 10)} [{item['id']}]\n" + ' · '.join(parts)
 
 
 def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
@@ -325,61 +341,54 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
             if other is not None and other not in member_ids and other in notes and _visible(notes[other]):
                 linked.setdefault(other, []).append(edge)
     terms = hive.query_terms(task)
-    candidates = [(lead, 'Project overview as a shared starting point', 0)]
+    hits = {}
+    candidates = [(lead, 'Project overview as a shared starting point')]
     if task.strip():
         # Scoped search protects project details from being crowded out by global
         # hits. Cross-project matches are limited to reusable decisions/lessons
         # or an already recorded link, never an invented relationship.
-        hits = {}
         for row in hive.search(root, task, limit=20, cluster=scope) + hive.search(root, task, limit=20):
-            hits.setdefault(row['id'], row)
-        ranked = []
-        for ident, hit in hits.items():
+            record = records.get(row['id'])
+            if record is not None and row['revision'] == hive.digest(record[1]):
+                hits.setdefault(row['id'], row)
+        for ident in hits:
             n = notes.get(ident)
             if n is None or not _visible(n) or ident == lead['id']:
                 continue
             local = ident in member_ids
             if not local and ident not in linked and n['type'] not in {'lesson', 'decision'}:
                 continue
-            if __package__:
-                from . import knowledge
-            else:
-                import knowledge
-            score = _match(n['title'] + ' ' + n['summary'] + ' ' + n['body'] + ' ' + knowledge.render(n), terms)
-            if not score:
-                continue
             reason = 'Task match within project' if local else 'Task match through a documented cross-connection' if ident in linked else 'Relevant lesson or decision from another context; no project dependency is claimed'
-            ranked.append((n, reason, score, local))
-        ranked.sort(key=lambda r: (-r[2], not r[3], r[0]['type'] not in {'decision', 'lesson'}, r[0]['id']))
-        candidates += [(n, reason, score) for n, reason, score, _ in ranked[:7]]
+            candidates.append((n, reason))
+            if len(candidates) == 8:
+                break
     else:
         remaining = [n for n in members if n['id'] != lead['id']]
         remaining.sort(key=lambda n: (n['type'] not in {'decision', 'lesson'}, n['evidence'] != 'disputed', n['id']))
-        candidates += [(n, 'Decision or context in the same project', 0) for n in remaining[:5]]
+        candidates += [(n, 'Decision or context in the same project') for n in remaining[:5]]
         external = sorted((notes[i] for i in linked), key=lambda n: (not any(e['relation'] in hive.STRONG for e in linked[n['id']]), n['type'] not in {'decision', 'lesson'}, n['id']))
-        candidates += [(n, 'Documented cross-connection to the project', 0) for n in external[:2]]
+        candidates += [(n, 'Documented cross-connection to the project') for n in external[:2]]
     header = '# Project context · ' + scope
     if task.strip():
         header += '\nTask: ' + _short(task, 16)
-    footer = 'Stored context, not live status. Confirmation applies only within its documented scope. Sources apply to notes; see `hive note ID` for details.'
+    footer = ('Stored evidence. `hive session-status SESSION_ID` lists revisions. `hive evidence ID@REVISION` shows scope and sources.'
+              if include_blocks else
+              'Stored context, not live status. Confirmation applies only within its documented scope. Sources apply to notes; see `hive note ID` for details.')
     blocks, selected, reading_blocks = [], [], []
     remaining = budget - len(header.split()) - len(footer.split())
-    for index, (n, reason, score) in enumerate(candidates):
+    for index, (n, reason) in enumerate(candidates):
         item = _provenance(n, records[n['id']][1], reason)
-        if __package__:
-            from . import knowledge
-        else:
-            import knowledge
-        item['matched_terms'] = [term for term in terms if _match(n['title'] + ' ' + n['summary'] + ' ' + n['body'] + ' ' + knowledge.render(n), [term])]
-        meta = _metadata(item)
+        item['matched_terms'] = hits.get(n['id'], {}).get('matched_terms', [])
+        meta = _session_metadata(item, scope) if include_blocks else _metadata(item)
         needed = len(meta.split())
         if remaining - needed < 10:
             if not selected:
                 raise ValueError('Context budget too small for project provenance; choose a larger budget')
             continue
         later = len(candidates) - index - 1
+        minimum = 120 if include_blocks and n.get('handoff') else 180 if n.get('handoff') else 35
         allowance = min(350 if n.get('handoff') else 220, remaining - needed,
-                        max(180 if n.get('handoff') else 35, (remaining - needed) // (min(later, 3) + 1)))
+                        max(minimum, (remaining - needed) // (min(later, 3) + 1)))
         body = _excerpt(n, terms, allowance)
         if not body:
             body = _short(n['summary'], max(1, allowance - 1))

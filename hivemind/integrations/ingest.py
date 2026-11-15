@@ -306,7 +306,7 @@ def _disposition(receipt,notes,resource,sha256=None,previous=None,modified_at=No
         else:_citations(notes,receipt.get('note_ids'),resource,modified_at=modified_at)
     else:raise ValueError('Explicit curated/irrelevant/unchanged disposition required')
 
-def _validate_receipt(receipt,prepared,kind,notes,root,state):
+def _validate_receipt(receipt,prepared,kind,notes,root,state,*,source=None,check_current=True):
     if receipt.get('kind')!=kind:raise ValueError('Receipt source kind mismatch')
     status=receipt.get('status')
     if status not in ('complete','incomplete','blocked','failed'):raise ValueError('Invalid source receipt status')
@@ -316,8 +316,9 @@ def _validate_receipt(receipt,prepared,kind,notes,root,state):
         if prepared.get('status')!='ready':raise ValueError('Prepared local source was unavailable')
         sha=prepared['sha256']
         if receipt.get('sha256')!=sha:raise ValueError('Receipt hash differs from prepared source')
-        current=read_source(root,prepared['id'])
-        if current['sha256']!=sha or current['path']!=prepared['path']:raise ValueError('Local source changed after preparation')
+        if check_current:
+            current=_read(root,source) if source is not None else read_source(root,prepared['id'])
+            if current['sha256']!=sha or current['path']!=prepared['path']:raise ValueError('Local source changed after preparation')
         _disposition(receipt,notes,prepared['path'],sha,state['checkpoints'].get(prepared['id']))
         return {'sha256':sha,'disposition':receipt['disposition'],'note_ids':receipt.get('note_ids',[])}
     if receipt.get('window')!=prepared:raise ValueError('Remote window differs from prepared bounds')
@@ -376,7 +377,7 @@ def finish_run(root,run_id,receipts):
             for ident,(kind,prepared) in expected.items():
                 try:
                     if integrity_error:raise ValueError('Canonical integrity failed: '+integrity_error)
-                    checkpoint=_validate_receipt(rows[ident],prepared,kind,notes,root,state)
+                    checkpoint=_validate_receipt(rows[ident],prepared,kind,notes,root,state,source=manifest.get('source_config',{}).get(ident))
                     state['checkpoints'][ident]={**checkpoint,'completed_at':prepared['end'] if kind=='remote' else at,'acknowledged_at':at,'run_id':run_id}
                     outcome={'status':'complete','attempted_at':at,'detail':rows[ident]['reason']}
                 except (OSError,ValueError,KeyError,TypeError) as exc:

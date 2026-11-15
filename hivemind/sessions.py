@@ -514,6 +514,37 @@ def _receipt(session, event, fingerprint):
             "notes": [{"id": c["id"], "revision": hive.digest(c["after"])} for c in event["changes"]]}
 
 
+def record_handoff(root, session_id, *, expected, source, source_title, observed_at,
+                   evidence='reported', project_state='', decision=None, because=None,
+                   agreement=None, questions=None):
+    """Build the existing handoff contract from a small explicit CLI delta.
+
+    No implicit latest revision, automatic evidence promotion, or new write path.
+    Observation time is explicit so a retry reconstructs the identical payload.
+    Omitted categories retain their contents and original field provenance.
+    """
+    if __package__:
+        from . import evidence as evidence_api
+    else:
+        import evidence as evidence_api
+    match = evidence_api.REFERENCE.fullmatch(expected or '')
+    if not match or not all((source, source_title, observed_at)):
+        raise AgentError('INVALID_ARGUMENT', '--record requires --expected ID@REVISION, --source, --source-title and --observed-at')
+    if decision is not None and (not because or agreement not in {'agreed', 'proposed'}):
+        raise AgentError('INVALID_HANDOFF', '--decision requires --because and --agreement agreed|proposed')
+    if decision is None and (because is not None or agreement is not None):
+        raise AgentError('INVALID_HANDOFF', '--because and --agreement require --decision')
+    ident, revision = match.groups()
+    payload = {'session_id': session_id, 'note_id': ident, 'expected_revision': revision,
+               'source': evidence_api.attributed_source(root, 'handoff-' + session_id,
+                                                       source, source_title, observed_at),
+               'evidence': evidence, 'project_state': project_state, 'decisions': [],
+               'open_questions': questions or [], 'next_steps': [], 'step_updates': []}
+    if decision is not None:
+        payload['decisions'] = [{'decision': decision, 'reason': because, 'status': agreement}]
+    return close_session(root, session_id, payload=payload)
+
+
 def close_session(root, session_id, payload=None, no_change=False, reason=""):
     """Commit a bounded handoff or explicitly record no durable change.
 

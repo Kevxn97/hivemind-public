@@ -4,7 +4,8 @@ Open `hive automation`, or press **b** in the TUI. The header identifies the vau
 The controls use the same terminal layout, gold accents and keyboard navigation
 as the main views. Choose **1–9** for an action, **Enter** to continue through
 fields, **y** to confirm or **Esc** to cancel. No change is saved on cancellation.
-Every feature starts off, including when an existing public vault is upgraded.
+New vaults start with every feature off. Upgrades preserve existing selections;
+provider registration and service migration are described below.
 `hive automation status --json` is a read-only configuration/runtime snapshot.
 
 ## Guided setup
@@ -21,23 +22,41 @@ intend to use, then describe what HiveMind may read. Select the initial window
 availability is **unverified** until an actual run produces valid coverage
 receipts. Credentials remain with the host. Project-only MCP configuration from
 `hive sources setup mcp` must also be available to the profile used for background
-runs, whose working folder is the vault. No connector is automatically installed
+runs, which use a private temporary working folder outside the vault. No connector is automatically installed
 or granted access by selecting a source.
 
-Choose the installed Codex executable and its existing profile directory. This
-does not copy login files or change model, hook, approval or sandbox settings.
-The selected profile must be logged in and have usable permissions for the vault.
-If the host requires interactive approval, complete its setup in an interactive
-session; HiveMind never bypasses approval or hook trust. A profile used for other
-vaults may carry those instructions too. Use a dedicated profile to keep a test
-fully separate from your personal setup.
+Choose the installed Codex executable and its existing profile directory. Both
+must be outside the vault. Explicit confirmation records their resolved paths
+and an executable SHA-256 under `~/.config/hivemind/providers/`, outside the vault.
+Changing `config/features.json` cannot authorize a different executable or profile.
+An executable update requires a fresh provider preview and confirmation.
+
+The selected login and model remain unchanged. Each sync overrides only its own
+execution policy: read-only local commands, no approval escalation, and no loaded
+command-allow rules. The installed CLI must support these options; incompatible
+or managed-disallowed settings fail instead of falling back to broader access.
+No global profile files are edited. Use a dedicated profile for connector access.
+Connector tools have their own permissions: the shell sandbox does **not** make
+all MCP/app tools read-only or enforce mailbox filters. Configure only the read
+tools and account scope you intend to allow; remote coverage receipts are reports
+from the provider, not an independent proof that its account scope was obeyed.
+
+The native runner prepares the selected documents and relevant non-personal
+project notes in a private temporary directory. The agent returns a bounded JSON
+proposal; it does not write the vault. HiveMind validates note schema, selected
+project, exact citations, current revisions and source receipts, then applies
+accepted note changes through the journal. Extra execution fields, invented
+workflow/verification metadata and raw receipt payload fields are rejected.
+Temporary inputs and proposals are removed after normal or handled-failure exit;
+forced process/host termination can leave a temporary directory for local cleanup.
 
 Enable source sync after reviewing the model-use notice, then choose **Run source
 sync once**. This starts a bounded Codex job using that profile. It may consume
 the account's allowance or cost money. Source and scope limits are in its manifest;
 failed, incomplete or blocked sources retain their last successful checkpoint.
-Agent exit alone is never enough to claim a completed sync. No transcript or raw
-provider output is saved by the job manager. Store only attributable summaries.
+Agent exit alone is never enough to claim a completed sync. No transcript or raw provider output is retained in daemon state or logs. Store
+only attributable summaries. One changed/unavailable local source leaves its
+checkpoint unchanged; independent valid sources can still complete.
 
 Enable **background startup** to create a user service tied to this vault and
 installation. macOS uses launchd; Linux needs a working `systemd --user` session.
@@ -110,3 +129,32 @@ evidence. This does not prove any real login, OAuth connector or model output.
 
 Codex runtime flags are documented in the official
 [developer commands](https://learn.chatgpt.com/docs/developer-commands#codex-exec).
+
+## Upgrading an existing automation setup
+
+Existing mutable vault configuration is not automatically trusted. Before the
+next source run, disable sync, preview and confirm the provider again, then
+re-enable sync. Knowledge, source choices and checkpoints remain in place.
+A malformed old approval blocks execution but does not block this replacement.
+
+```sh
+hive automation disable sync
+hive automation provider --codex /path/to/codex --agent-home /path/to/profile
+hive automation enable sync
+```
+
+Confirm each preview separately with its exact `--apply --preview TOKEN`, or use
+the interactive automation menu. Registration does not start a provider run.
+
+After a package upgrade, run `hive automation status`. An owned older login
+service is flagged with `needs_update`; preview and apply `hive automation enable
+background` to reinstall it. This preserves the service identity and scheduler
+settings. Updated services use the trusted installation directory, and installed
+Python entrypoints use safe-path mode, so a Python file in the vault cannot shadow
+the installed package. An existing service is not silently rewritten by opening
+status; perform this migration before relying on unattended startup again.
+
+The selected model/profile may still allow broad reads or connector actions.
+This release enforces the **local command write boundary**, validates the data
+that HiveMind applies, and pins the native executable. It does not claim full
+account isolation or semantic resistance to every malicious source instruction.

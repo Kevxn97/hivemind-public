@@ -63,45 +63,32 @@ def build(root, target, task, budget, previous_at=None):
                 'work_items': items, 'open_work': [i for i in items if i['state'] in {'open', 'waiting'}],
                 'changes': changes, 'lessons': lessons, 'gaps': gaps,
                 'next_commands': ['session-context SESSION_ID --task TASK --budget 1200',
-                                  'session-draft SESSION_ID --out UNIQUE_FILE',
+                                  'session-close SESSION_ID --record --expected ' + note['id'] + '@' + hive.digest(raw) + ' --source sources/FILE.md --source-title TITLE --observed-at TIME',
                                   'session-close SESSION_ID --file UNIQUE_FILE',
                                   'session-close SESSION_ID --no-change']}
-    reserve = min(480, max(0, budget - 180), budget // 2)
-    lines = ['## Work for this session']
-    for item in workflow['open_work'][:8]:
+    reserve = min(160, max(0, budget - 180), budget // 4)
+    lines = []
+    # The first pending step already travels with its handoff in the brief.
+    for item in workflow['open_work'][1:8]:
         text = project_context._short(item['text'], 24)
-        lines.append(f"- {item['id']} · {work_items.LABELS[item['state']]} · {item['status']}: {text} "
-                     f"[Source {item['source_id']}; {item['evidence']}; {item['observed_at']}]")
-    if len(workflow['open_work']) > 8:
-        lines.append('More open steps are in structured workflow.open_work.')
-    if not workflow['open_work']:
-        lines.append('No open steps recorded; this does not establish completeness.')
-    lines.append('## Changes / ' + ('since context was last offered' if previous_at else 'first session, last seven days'))
-    for item in changes['items'][:3]:
-        lines.append('- ' + item['id'] + ': ' + ' '.join(item['reasons']) + ' @' + item['revision'][:12])
-    if not changes['items']:
-        lines.append('No matching changes recorded.')
-    for item in lessons['items'][:2]:
-        lines.append('Lesson: ' + item['id'] + ' — ' + project_context._short(item['summary'], 18) +
-                     '; check applicability; evidence in workflow.lessons.')
-    if gaps:
-        lines.append('Knowledge gap: ' + gaps[0])
+        lines.append(f"Work ({item['state']}, {item['status']}): {text} "
+                     f"[{item['evidence']}, {item['source_id']}, {item['observed_at']}]")
+    retired = [item['id'] for item in changes['items']
+               if 'Archived or marked deprecated since the baseline.' in item['reasons']]
+    if retired:
+        lines.append('Archived or deprecated since the baseline: ' + ', '.join(retired))
     extra, used = [], 0
     for line in lines:
         size = len(line.split())
-        if used + size + 9 > reserve:
-            extra.append('More session details are in the structured workflow; load as needed.')
+        if used + size > reserve:
             break
         extra.append(line)
         used += size
-    if not reserve:
-        extra = []
-    prefix = '\n'.join(extra)
-    context = project_context.task_brief(root, target, task=task, budget=budget - len(prefix.split()), include_blocks=True)
+    context = project_context.task_brief(root, target, task=task, budget=budget - used, include_blocks=True)
     if context['selected'][0]['revision'] != hive.digest(raw):
         raise ValueError('Project changed while preparing context; retry session-open/session-context')
-    text = (prefix + '\n\n' if prefix else '') + context['text']
-    context.update(text=text, budget=budget, word_count=len(text.split()))
+    text = context['text'] + ('\n' + '\n\n'.join(extra) + '\n' if extra else '')
+    context.update(text=text, budget=budget, word_count=len(text.split()), _supplement=extra)
     if context.get('task_match') is False:
         gaps.append('No matching task evidence found; do not infer an answer from word matches.')
     return context, workflow

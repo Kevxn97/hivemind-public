@@ -18,10 +18,16 @@ class ArgumentParser(argparse.ArgumentParser):
 COMMANDS = {'project-register', 'project-unregister', 'projects', 'session-open', 'session-context', 'session-draft',
             'session-close', 'session-status', 'why', 'impact', 'lessons',
             'changes', 'feedback', 'session-end', 'session-feedback', 'session-metrics', 'doctor', 'contract', 'evidence',
-            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft'}
+            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'adopt'}
 
 
 def configure(sub):
+    p = sub.add_parser('adopt', help='Preview or journal an external edit to one existing Markdown note')
+    p.add_argument('id')
+    p.add_argument('--actor', required=True); p.add_argument('--reason', required=True)
+    p.add_argument('--context', required=True, help='Source or context for the external edit')
+    p.add_argument('--apply', action='store_true')
+    p.add_argument('--preview', help='Exact token from a prior preview')
     p = sub.add_parser('review-plan', help='Prepare up to five evidence-backed review candidates')
     p.add_argument('target', nargs='?', default='.')
     p.add_argument('--limit', type=int, default=5); p.add_argument('--offset', type=int, default=0)
@@ -69,6 +75,15 @@ def configure(sub):
     p.add_argument('session_id')
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument('--file', type=Path); mode.add_argument('--no-change', action='store_true')
+    mode.add_argument('--record', action='store_true', help='Record a simple delta without a draft file; same source/revision/journal checks')
+    p.add_argument('--expected', metavar='ID@REVISION', help='Reviewed project reference; required for --record')
+    p.add_argument('--source', help='Attributable resource; local sources/ or INBOX/ text is hashed')
+    p.add_argument('--source-title'); p.add_argument('--observed-at', help='Explicit source observation timestamp, unchanged on retries')
+    p.add_argument('--evidence', choices=('reported', 'inferred', 'confirmed', 'disputed'))
+    p.add_argument('--project-state')
+    p.add_argument('--decision', help='Replace decisions with this one; use --file to retain a multi-decision list')
+    p.add_argument('--because'); p.add_argument('--agreement', choices=('agreed', 'proposed'))
+    p.add_argument('--question', action='append', help='Repeat for the complete replacement question list; omitted categories stay unchanged')
     p = sub.add_parser('session-status', help='Inspect a session receipt')
     p.add_argument('session_id')
     p = sub.add_parser('session-end', help='Record runtime end without inventing a handoff')
@@ -81,8 +96,7 @@ def configure(sub):
     p.add_argument('--actor', choices=('agent', 'user'), default='agent')
     p = sub.add_parser('session-metrics', help='Count offered context and explicit feedback separately')
     p.add_argument('--cluster')
-    p = sub.add_parser('doctor', help='Inspect local integration and state read-only')
-    p.add_argument('--home', type=Path)
+    configure_doctor(sub)
     p = sub.add_parser('contract', help='Show the session contract and JSON schemas')
     p.add_argument('--schema')
     for name in ('why', 'impact'):
@@ -105,6 +119,13 @@ def configure(sub):
     p.add_argument('--actor', default='user')
 
 
+def configure_doctor(sub):
+    p = sub.add_parser('doctor', help='Inspect local integration and state read-only')
+    p.add_argument('--home', type=Path)
+    p.add_argument('--codex-home', type=Path)
+    p.add_argument('--claude-home', type=Path)
+
+
 def execute(args, root):
     return agent_contract.success(args.command, _execute(args, root))
 
@@ -121,6 +142,12 @@ def _references(values):
 
 def _execute(args, root):
     command = args.command
+    if command == 'adopt':
+        if __package__:
+            from . import hive
+        else:
+            import hive
+        return hive.adopt(root, args.id, args.actor, args.reason, args.context, apply_edit=args.apply, preview=args.preview)
     if command in {'review-plan', 'review-record'}:
         if __package__:
             from . import curation
@@ -146,7 +173,7 @@ def _execute(args, root):
             from . import doctor
         else:
             import doctor
-        return doctor.inspect(root, home=args.home)
+        return doctor.inspect(root, home=args.home, codex_home=args.codex_home, claude_home=args.claude_home)
     if command == 'contract':
         return {'schema': agent_contract.describe(args.schema)} if args.schema else agent_contract.describe()
     if command in {'project-register', 'project-unregister', 'projects'}:
@@ -186,6 +213,16 @@ def _execute(args, root):
                 out.write('\n')
             return {'session_id': args.session_id, 'draft': str(args.out)}
         if command == 'session-close':
+            fields = ('expected', 'source', 'source_title', 'observed_at', 'evidence',
+                      'project_state', 'decision', 'because', 'agreement', 'question')
+            if args.record:
+                values = {key: getattr(args, key) for key in fields}
+                values['questions'] = values.pop('question')
+                values['project_state'] = values['project_state'] or ''
+                values['evidence'] = values['evidence'] or 'reported'
+                return sessions.record_handoff(root, args.session_id, **values)
+            if any(getattr(args, key) is not None for key in fields):
+                raise agent_contract.AgentError('INVALID_ARGUMENT', 'Record fields require --record; they cannot be ignored with --file or --no-change')
             payload = json.loads(args.file.read_text()) if args.file else None
             return sessions.close_session(root, args.session_id, payload=payload, no_change=args.no_change)
         return sessions.session_status(root, args.session_id)

@@ -4,7 +4,7 @@ include assets/screenshots/network.png assets/screenshots/overview.png
 recursive-include .github *.yml
 recursive-include hivemind *.py *.schema.json *-global.md
 recursive-include tests *.py
-recursive-include scripts *.py
+recursive-include scripts *.py *.json
 recursive-include docs *.md
 global-exclude *.py[cod] .DS_Store
 prune output

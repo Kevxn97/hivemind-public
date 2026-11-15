@@ -49,6 +49,27 @@ Memory and source dialogs show a preview before saving. If you have one project
 and one connected agent, HiveMind selects them for you. With several projects,
 you can choose one by name or number.
 
+## What the memory adds
+
+A project instruction file is a good place for stable working rules. HiveMind
+keeps changing project knowledge separately: what was decided, why, where the
+claim came from, and which correction replaced it. Codex and Claude can retrieve
+that same journaled knowledge in a fresh session. The history makes a correction
+inspectable instead of silently replacing the earlier claim.
+
+For example, record `hive remember "Use SQLite for the local pilot" --type decision`.
+A later session can retrieve that decision. If the project moves to PostgreSQL,
+use the previewed correction flow in [Memory controls](docs/MEMORY.md); the next
+session should use the corrected decision and retain the old one as history.
+Controlled live tests have exercised this flow. Reliable everyday benefit still
+needs a representative continuity pilot; test counts alone do not establish it.
+
+Canonical Markdown is readable in your editor. Saving an external change makes
+HiveMind report an integrity mismatch until you explicitly review and journal it.
+Use `hive adopt NOTE_ID --actor USER --reason "Why this changed" --context "source:reference"`
+to preview an intentional edit, then repeat with `--apply --preview TOKEN`.
+See [Memory controls](docs/MEMORY.md#external-editor-changes) for limits and recovery.
+
 ## A look inside
 
 Here's the overview and network view with example data. Click either image to
@@ -197,15 +218,46 @@ sync uses the connected agent's tools and the scope you select.
 
 ## Agent workflow
 
+The installed connection supplies the current session, project revision and
+bounded context. Reuse that context; retrieve more evidence when the task needs
+it. Connected agents must use `--record` for simple sourced handoffs; the startup
+context and follow-up commands supply the project revision. Read existing
+categories with `evidence PROJECT_ID@REVISION --section handoff` when needed.
+Reserve JSON drafts for multiple decisions, work-item updates or complex merges:
+
+```sh
+# First save the short, attributable observation in sources/decision.md.
+hive --root /path/to/vault session-close SESSION_ID --record \
+  --expected PROJECT_ID@REVISION --source sources/decision.md \
+  --source-title "Operator decision" --observed-at "2026-11-15T12:00:00Z" \
+  --decision "Retry transient failures three times" \
+  --because "Avoid repeated processing" --agreement agreed --json
+```
+
+Use the source's actual observation time. Local source text is fingerprinted;
+the revision check, journal and retry-safe receipt are the same as the structured
+flow. Keep the attributed source unchanged, including during an interrupted
+close: retry the identical command with the same source bytes and timestamp.
+Changed or missing evidence is rejected; a journaled change remains in history
+even if the receipt could not yet be saved. For questions, replace the decision flags with repeated `--question` and
+use `--evidence inferred` when appropriate. Omitted categories retain their
+original evidence; a supplied category replaces that category's list. Use the
+structured flow for multiple decisions, work updates or a more involved merge:
+
 ```sh
 hive --root /path/to/vault session-open /path/to/project --agent codex --json
 hive --root /path/to/vault session-context SESSION_ID --task "Current task" --json
-hive --root /path/to/vault session-draft SESSION_ID --out /tmp/handoff.json
+hive --root /path/to/vault session-draft SESSION_ID --out /tmp/handoff-SESSION_ID.json
 # Fill the source, decisions, reasons and work changes in the draft.
-hive --root /path/to/vault session-close SESSION_ID --file /tmp/handoff.json --json
+hive --root /path/to/vault session-close SESSION_ID --file /tmp/handoff-SESSION_ID.json --json
 ```
 
 If a successful hook offers a session ID, use it instead of opening a duplicate.
+Keep it open across intermediate answers; close at the requested handoff or end
+of the work episode. Correct linked decisions with `memory edit` preview/apply
+instead of duplicating their content in the project handoff. Reconnect explicitly
+to install revised guidance in an existing agent profile; upgrades do not silently
+rewrite personal agent instructions.
 If there's no durable update, close with `--no-change`. SessionEnd records that a
 runtime ended; it doesn't create a summary or a successful handoff. Retrieved
 context has a source and freshness limit. Treat it as evidence, not as permission
@@ -232,6 +284,10 @@ wheel installation on macOS and Linux with Python 3.11 and 3.14. It keeps failur
 reports too. A successful run doesn't verify host trust, OAuth sign-in, or
 usefulness on real tasks. See [release preparation](docs/RELEASE.md) and
 [changes](CHANGELOG.md).
+
+The [seven-task continuity pilot](docs/PILOT.md) compares fresh Codex → Claude →
+Codex conversations with a normal `HANDOFF.md` baseline. Its local setup is
+synthetic; live execution and any claim about daily usefulness are separate.
 
 ## License
 

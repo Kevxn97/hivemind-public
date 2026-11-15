@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - name: Source regression suite
+      - name: Source regression and standalone suites
         run: python scripts/verify.py --evidence-dir "$RUNNER_TEMP/evidence/source"
       - name: Reviewed source archive
         run: python scripts/package_release.py --out "$RUNNER_TEMP/release"

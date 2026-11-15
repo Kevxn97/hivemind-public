@@ -11,47 +11,76 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+STANDALONE_SUITES = (
+    'scripts.verify_background.BackgroundE2E',
+    'scripts.verify_ingest.IngestE2E',
+    'scripts.verify_jobs.JobsE2E',
+    'scripts.verify_launcher.CliE2E',
+    'scripts.verify_terminal.TerminalE2E',
+)
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--pattern', default='test*.py')
+    p.add_argument('--pattern', help='Run only matching files under tests/.')
     p.add_argument('--evidence-dir', type=Path, default=ROOT.parent / 'hivemind-public-evidence')
     args = p.parse_args()
-    out = args.evidence_dir / dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    started = dt.datetime.now(dt.timezone.utc)
+    out = args.evidence_dir.expanduser().resolve() / started.strftime('%Y%m%dT%H%M%S%fZ')
     out.mkdir(parents=True)
-    command = [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', args.pattern, '-v']
+    unittest = [sys.executable, '-B', '-m', 'unittest']
+    checks = [{'command': [*unittest, 'discover', '-s', 'tests', '-p', args.pattern or 'test*.py', '-v'],
+               'log': 'test.log', 'outcome': 'pending'}]
+    if args.pattern is None:
+        checks.append({'command': [*unittest, '-v', *STANDALONE_SUITES],
+                       'log': 'standalone.log', 'outcome': 'pending'})
     files = [path for path in ROOT.rglob('*') if path.is_file() and not
              any(part in {'.git', '__pycache__', '.venv', 'output', 'dist', 'build'} or part.endswith('.egg-info') for part in path.relative_to(ROOT).parts)]
-    report = {'command': command, 'cwd': str(ROOT), 'outcome': 'running',
+    report = {'checks': checks, 'cwd': str(ROOT), 'outcome': 'running', 'started_at': started.isoformat(),
               'environment': {'python': sys.version, 'platform': platform.platform(),
                               'installed_python': os.environ.get('HIVEMIND_TEST_PYTHON')},
-              'fixture': 'Temporary synthetic vaults, projects and agent homes; no provider calls or personal data.',
+              'fixture': 'Temporary synthetic vaults, projects and agent homes. Standalone suites use fake Codex, Calendar and launchctl boundaries and xterm-256color POSIX PTYs. No provider calls or personal data.',
               'source_sha256': {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest() for f in files}}
     evidence = out / 'evidence.json'
+
     def save():
         evidence.write_text(json.dumps(report, indent=2) + '\n')
+
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', HIVEMIND_EVIDENCE_DIR=str(out),
+               HIVEMIND_E2E_EVIDENCE_DIR=str(out / 'connections'))
     save()
-    code = 1
+    code = 0
     try:
-        with (out / 'test.log').open('w') as log:
-            process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                       env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', HIVEMIND_EVIDENCE_DIR=str(out),
-                                                HIVEMIND_E2E_EVIDENCE_DIR=str(out / 'connections')))
-            try:
-                code = process.wait(timeout=240)
-            except BaseException:
-                process.terminate()
-                process.wait(timeout=10)
-                raise
+        for check in checks:
+            check['outcome'] = 'running'
+            save()
+            with (out / check['log']).open('w') as log:
+                with subprocess.Popen(check['command'], cwd=ROOT, stdout=log,
+                                      stderr=subprocess.STDOUT, env=env) as process:
+                    try:
+                        status = process.wait(timeout=240)
+                    except BaseException:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        raise
+            check.update(outcome='passed' if status == 0 else 'failed', returncode=status)
+            code = code or status
+            save()
         report.update(outcome='passed' if code == 0 else 'failed', returncode=code)
     except BaseException as exc:
+        check.update(outcome='aborted', error=type(exc).__name__)
         report.update(outcome='aborted', error=type(exc).__name__)
         raise
     finally:
         report['finished_at'] = dt.datetime.now(dt.timezone.utc).isoformat()
         save()
-        print((out / 'test.log').read_text()[-6000:])
+        for check in checks:
+            log = out / check['log']
+            if log.exists():
+                print(log.name, log.read_text(encoding='utf-8', errors='replace')[-6000:], sep='\n')
         print('Evidence:', evidence)
     return code
 

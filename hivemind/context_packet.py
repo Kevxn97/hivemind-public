@@ -47,10 +47,11 @@ def compact(receipt, context, workflow, maximum=None):
     result = {'contract_version': 1, 'ok': True, 'packet_version': 1, 'view': 'compact',
               **{k: receipt[k] for k in ('session_id', 'cluster', 'status', 'previous_context_at')},
               'context': {'text': '', 'budget': context['budget'], 'word_count': 0,
-                          'task_match': context.get('task_match', True)},
+                          'task_match': False if context.get('task_match') is not None else None},
               'refs': refs, 'offered': [],
               'omitted': {'references': 0, 'text_blocks': 0, 'workflow_details': True},
-              'next_commands': ['evidence ID@REVISION', 'evidence ID@REVISION --section SECTION',
+              'next_commands': ['session-close ' + receipt['session_id'] + ' --record --expected ' + workflow['project']['id'] + '@' + workflow['project']['revision'] + ' --source sources/FILE.md --source-title TITLE --observed-at TIME',
+                                'evidence ID@REVISION --section handoff', 'evidence ID@REVISION', 'evidence ID@REVISION --section SECTION',
                                 'evidence ID@REVISION --source SOURCE_ID',
                                 'verify-plan ID@REVISION', 'review-plan ' + receipt['cluster'],
                                 'session-context ' + receipt['session_id'] + ' --view full'],
@@ -68,27 +69,15 @@ def compact(receipt, context, workflow, maximum=None):
         result['omitted']['references'] += 1
     finish(result, maximum)
     included = {r['ref'] for r in refs}
-    if context.get('task_match') is not None:
-        result['context']['task_match'] = any(row.get('matched_terms') for row in selected
-                                             if row['id'] + '@' + row['revision'] in included)
     groups = {b['ref']: b for b in context['_reading_blocks'] if b['ref'] in included}
     blocks = []
     # Start with project facts and decisions; then give each note a first excerpt.
     for ref, group in groups.items():
         if group['paragraphs']:
             blocks.append((ref, group['paragraphs'][0]))
-    blocks.extend((None, 'Knowledge gap: ' + gap) for gap in workflow['gaps'])
-    for item in workflow['changes']['items']:
-        ref = item['id'] + '@' + item['revision']
-        if ref in included:
-            blocks.append((None, 'Change/review: ' + ref + ' — ' + ' '.join(item['reasons'])))
-    for item in workflow['lessons']['items']:
-        ref = item['id'] + '@' + item['revision']
-        if ref in included:
-            blocks.append((None, 'Lesson: ' + ref + ' — ' + item['summary'] + '; check applicability.'))
-    for item in workflow['open_work'][:8]:
-        blocks.append((None, 'Work: ' + item['text'] + ' [' + item['status'] + '; ' + item['state'] +
-                       '; ' + item['evidence'] + '; source ' + item['source_id'] + '; ' + item['observed_at'] + ']'))
+    if context.get('task_match') is False:
+        blocks.append((None, 'No matching task evidence found.'))
+    blocks.extend((None, paragraph) for paragraph in context['_supplement'])
     for index in range(1, max((len(g['paragraphs']) for g in groups.values()), default=0)):
         for ref, group in groups.items():
             if index < len(group['paragraphs']):
@@ -118,4 +107,8 @@ def compact(receipt, context, workflow, maximum=None):
     while measure(result) > maximum and accepted:
         accepted.pop(); result['omitted']['text_blocks'] += 1
         result['context'].update(text=render(accepted), word_count=len(render(accepted).split()))
+    if context.get('task_match') is not None:
+        shown = {ref for ref, _ in accepted}
+        result['context']['task_match'] = any(row['matched_terms'] for row in selected
+                                             if row['id'] + '@' + row['revision'] in shown)
     return finish(result, maximum)

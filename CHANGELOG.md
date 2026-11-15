@@ -1,6 +1,29 @@
 # Changes
 
+- Route simple connected-agent handoffs consistently to `--record` in startup guidance and compact/full follow-up commands; preserve structured drafts for complex updates.
+
 ## Unreleased
+
+- Simple handoffs accept explicit source, observation time, reviewed revision
+  and decision/question flags with `session-close --record`; they use the same
+  journal and receipt checks as structured handoffs. Local evidence is hashed.
+- Connected agent guidance uses the full CLI, avoids duplicate context reads,
+  keeps intermediate sessions open and exposes the existing correction flow.
+  Corrections show their new source first and bind local source bytes to previews,
+  while preserving every prior source record and exact historical revision.
+- Source sync pins an explicitly registered provider outside the vault, runs it
+  in a read-only staging directory, and applies only validated, source-linked
+  proposals through the host journal. Existing automation needs registration;
+  old service definitions are reported for explicit refresh.
+- Externally edited notes produce a visible hook warning. `adopt` previews and
+  journals reviewed edits without discarding their exact bytes or prior history.
+- Startup context keeps concise provenance while full evidence remains
+  addressable. Local database terminology and question forms improve lexical
+  retrieval; short memories can be explicitly stored as decisions.
+- The normal verifier includes all five standalone operating suites (56 tests),
+  with success, failure and interruption evidence.
+- A seven-task paired continuity pilot is documented with synthetic starting
+  data, fixed scoring criteria and a normal Markdown handoff baseline.
 
 - English-first terminal, CLI, and generated context; existing notes retain their
   original language.
@@ -9,7 +32,8 @@
 - Selected files and scoped remote sources can be enabled, disabled or removed.
   Preview tokens bind CLI changes to the selected vault and current settings.
 - Portable sync instructions use an explicitly chosen Codex executable/profile,
-  retain its model and permissions, and validate per-source completion receipts.
+  retain its model settings, narrow local execution to read-only staging, and
+  validate per-source completion receipts.
 - macOS launchd and Linux systemd user-service definitions have unique ownership
   per vault. Pause gates new automation; disabling preserves knowledge/history.
 - Weekly review saves a bounded operational report and never invents verification

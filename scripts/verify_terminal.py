@@ -3,8 +3,7 @@
 
 No provider, native Calendar, HTTP server or Codex process is invoked. A separate
 subprocess injects explicit doubles only for the two user-triggered actions.
-Every invocation records the command, fixture, terminal dimensions, transcripts,
-results and source hashes under output/terminal-e2e, including failed runs.
+The evidence directory captures terminal dimensions and synthetic transcripts.
 """
 import datetime as dt
 import fcntl
@@ -26,13 +25,22 @@ import termios
 import time
 import unittest
 
-BASE = Path(__file__).resolve().parents[1] / 'hivemind'
-sys.path.insert(0, str(BASE))
-import hive
+ROOT = Path(__file__).resolve().parents[1]
+BASE = ROOT / 'hivemind'
+if not __package__:
+    sys.path.insert(0, str(ROOT))
+from hivemind import hive, sessions
 
-STAMP = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-OUT = Path(os.environ.get('HIVEMIND_EVIDENCE_DIR', str(BASE.parent.parent/'hivemind-public-evidence')))/'terminal-e2e'/STAMP
-OUT.mkdir(parents=True, exist_ok=True)
+OUT = None
+UTF8_LOCALE = 'en_US.UTF-8' if sys.platform == 'darwin' else 'C.UTF-8'
+
+
+def terminal_evidence_dir():
+    stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    base = Path(os.environ.get('HIVEMIND_EVIDENCE_DIR', str(ROOT.parent / 'hivemind-public-evidence')))
+    out = base / 'terminal-e2e' / stamp
+    out.mkdir(parents=True)
+    return out
 
 
 def note(ident, **fields):
@@ -48,16 +56,22 @@ def note(ident, **fields):
 
 
 class Terminal:
-    def __init__(self, root, name, code=None):
+    def __init__(self, root, name, code=None, *, output=None):
+        self.output = output or OUT or terminal_evidence_dir()
         self.master, slave = pty.openpty()
         self.sizes = []
         self.resize(80, 24, notify=False)
-        env = dict(os.environ, TERM='xterm-256color', LANG='en_US.UTF-8', LC_CTYPE='UTF-8')
+        env = dict(os.environ, TERM='xterm-256color', LC_ALL=UTF8_LOCALE)
         args = [sys.executable, '-c', code, str(root)] if code else [sys.executable, str(BASE/'terminal_ui.py'), '--root', str(root)]
-        self.proc = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave,
-            cwd=BASE, env=env, start_new_session=True,
-            preexec_fn=lambda: fcntl.ioctl(slave, termios.TIOCSCTTY, 0))
-        os.close(slave)
+        try:
+            self.proc = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave,
+                cwd=BASE, env=env, start_new_session=True,
+                preexec_fn=lambda: fcntl.ioctl(slave, termios.TIOCSCTTY, 0))
+        except BaseException:
+            os.close(self.master)
+            raise
+        finally:
+            os.close(slave)
         self.data = bytearray()
         self.name = name
 
@@ -155,16 +169,22 @@ class Terminal:
                 except subprocess.TimeoutExpired:self.proc.kill();self.proc.wait(timeout=3)
         self.drain(.05)
         text = self.data.decode('utf-8','replace')
-        (OUT/(self.name+'.ansi.txt')).write_text(text)
+        (self.output/(self.name+'.ansi.txt')).write_text(text, encoding='utf-8')
         clean = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b[()][AB012]|\x1b[=>78]|\x1b\][^\x07]*(?:\x07|\x1b\\)', '', text)
-        (OUT/(self.name+'.text.txt')).write_text(clean)
-        (OUT/(self.name+'.screen.txt')).write_text(self.screen_text())
-        (OUT/(self.name+'.json')).write_text(json.dumps({'dimensions':self.sizes,'exit_code':self.proc.returncode},indent=2))
+        (self.output/(self.name+'.text.txt')).write_text(clean, encoding='utf-8')
+        (self.output/(self.name+'.screen.txt')).write_text(self.screen_text(), encoding='utf-8')
+        (self.output/(self.name+'.json')).write_text(json.dumps(
+            {'dimensions': self.sizes, 'exit_code': self.proc.returncode,
+             'term': 'xterm-256color', 'locale': UTF8_LOCALE}, indent=2))
         os.close(self.master)
         return self.proc.returncode
 
 
 class TerminalE2E(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.output = OUT or terminal_evidence_dir()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='hivemind-terminal-fixture-')
         self.root = Path(self.tmp.name)
@@ -184,19 +204,19 @@ class TerminalE2E(unittest.TestCase):
         self.tmp.cleanup()
 
     def terminal(self, suffix, code=None):
-        session = Terminal(self.root, self.id().split('.')[-1]+'-'+suffix, code)
+        session = Terminal(self.root, self.id().split('.')[-1]+'-'+suffix, code, output=self.output)
         self.sessions.append(session)
         return session
 
     def test_background_paused_degraded_and_backoff_are_not_reported_as_ready(self):
-        for state,expected in [({'status':'paused','message':'Automatik ausgeschaltet'},'paused'),({'status':'degraded','message':'Konfiguration beschädigt'},'degraded'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'Quellenpause')]:
+        for state,expected in [({'status':'paused','message':'Automatik ausgeschaltet'},'paused'),({'status':'degraded','message':'Konfiguration beschädigt'},'degraded'),({'status':'running','message':'Quellenpause nach Fehler','backoff_until':'2100-01-01T00:00:00Z'},'source backoff')]:
             code="import sys;sys.path.insert(0,sys.argv[1]);import terminal_ui,background;background.status=lambda root:"+repr({'daemon_running':True,**state})+";print(terminal_ui.render_plain(__import__('pathlib').Path(sys.argv[2]),width=120))"
             result=subprocess.run([sys.executable,'-c',code,str(BASE),str(self.root)],capture_output=True,text=True,timeout=10)
             self.assertEqual(result.returncode,0,result.stderr);self.assertIn(expected,result.stdout)
 
     def test_non_tty_is_a_plain_local_snapshot_and_never_launches_a_server(self):
         result = subprocess.run([sys.executable,str(BASE/'terminal_ui.py'),'--root',str(self.root)],capture_output=True,text=True,timeout=5)
-        (OUT/'plain-snapshot.txt').write_text(result.stdout+result.stderr)
+        (self.output/'plain-snapshot.txt').write_text(result.stdout+result.stderr, encoding='utf-8')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('HIVE',result.stdout);self.assertIn('2 notes',result.stdout)
         self.assertIn('No interactive terminal',result.stdout)
@@ -358,7 +378,6 @@ class TerminalE2E(unittest.TestCase):
         self.assertFalse(list((self.root/'INBOX').glob('*.md')))
 
     def test_project_work_states_are_visible_in_overview_and_details(self):
-        import sessions
         value=note('work-project',type='project',cluster='projects/work-project',title='Projektarbeit',body='# Projektarbeit\n\nSynthetischer Arbeitsablauf.')
         hive.apply(self.root,{'changes':[{'expected_revision':'new','note':value}]},'test','Synthetic work','test:work')
         opened=sessions.open_session(self.root,'projects/work-project',agent='test-agent')
@@ -409,6 +428,8 @@ raise SystemExit(terminal_ui.run(root))
 
 
 if __name__=='__main__':
+    OUT = terminal_evidence_dir()
+    STAMP = OUT.name
     stream=io.StringIO()
     suite=(unittest.TestSuite([TerminalE2E(sys.argv[1])]) if len(sys.argv)>1 else unittest.defaultTestLoader.loadTestsFromTestCase(TerminalE2E))
     result=unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)

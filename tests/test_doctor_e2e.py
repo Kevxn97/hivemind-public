@@ -220,7 +220,8 @@ class DoctorE2E(unittest.TestCase):
         note = self.root / 'wiki/project/demo.md'
         note.write_text(note.read_text() + '\nUnjournaled fixture mutation.\n')
         _, checks = self.doctor()
-        self.assertEqual(checks['canonical']['state'], 'invalid')
+        self.assertEqual(checks['canonical']['state'], 'external_edits')
+        self.assertEqual(checks['canonical']['changed'], ['demo'])
         self.assertEqual(checks['canonical']['status'], 'error')
 
     def test_stale_project_mapping_and_malformed_session_are_diagnosed(self):

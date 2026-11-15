@@ -6,6 +6,7 @@ Python standard library only. The wiki is authoritative; .cache is disposable.
 import argparse
 import contextlib
 import datetime as dt
+import difflib
 import fcntl
 import hashlib
 import json
@@ -121,7 +122,7 @@ def atomic(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".write-")
     try:
-        with os.fdopen(fd, "w") as out:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
             out.write(text)
             out.flush()
             os.fsync(out.fileno())
@@ -152,6 +153,8 @@ def encode(note):
 
 
 def decode(text):
+    # Parse editor line endings without normalizing the stored revision bytes.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("---\n"):
         raise ValueError("Missing frontmatter")
     header, body = text[4:].split("\n---\n", 1)
@@ -171,17 +174,60 @@ def path_for(root, note):
     return root / "wiki" / note["type"] / (note["id"] + ".md")
 
 
+class IntegrityError(ValueError):
+    """An on-disk problem with a message safe to include in a startup hook."""
+
+
+class ExternalEdits(IntegrityError):
+    def __init__(self, changed, added, missing):
+        self.changed = changed
+        self.added = added
+        self.missing = missing
+        details = []
+        if changed:
+            names = ", ".join(changed[:3]) + (", …" if len(changed) > 3 else "")
+            details.append("Unjournaled Markdown edits in " + names + ". "
+                           + "Run hive adopt " + changed[0] + " --help to review an edit, or restore the journaled version.")
+        if added or missing:
+            details.append("Untracked or missing note files (" + str(len(added) + len(missing))
+                           + "). Keep a copy of local changes and restore the canonical paths.")
+        super().__init__(" ".join(details))
+
+
+def reject_symlinks(root, path):
+    for part in (path, *path.parents):
+        if part == root:
+            break
+        if part.is_symlink():
+            relative = path.relative_to(root).as_posix()
+            location = " at " + relative if re.fullmatch(r"[a-zA-Z0-9./_-]+", relative) else ""
+            raise IntegrityError("Symlink" + location + ". Restore local paths and run hive check.")
+
+
+def read_note(path):
+    return path.read_bytes().decode("utf-8")
+
+
 def load_notes(root):
     result = {}
-    for path in sorted((root / "wiki").rglob("*.md")):
+    wiki = root / "wiki"
+    for folder in (wiki, *(wiki / kind for kind in KINDS)):
+        reject_symlinks(root, folder)
+    for path in sorted(wiki.rglob("*.md")):
         if path.name in {"index.md", "log.md"}:
             continue
-        if path.is_symlink():
-            raise ValueError("Symlink knowledge files are unsupported")
-        text = path.read_text()
-        note = decode(text)
-        if path != path_for(root, note) or note["id"] in result:
-            raise ValueError("Duplicate ID or noncanonical path: " + str(path))
+        reject_symlinks(root, path)
+        label = path.stem if ID.fullmatch(path.stem) else "unknown ID"
+        try:
+            if not path.is_file():
+                raise ValueError("Expected a regular note file")
+            text = read_note(path)
+            note = decode(text)
+            if path != path_for(root, note) or note["id"] in result:
+                raise ValueError("Duplicate ID or noncanonical path")
+        except (ValueError, TypeError, OSError, KeyError) as exc:
+            message = "Invalid Markdown note (" + label + "). Repair its format or restore the canonical file, then run hive check."
+            raise IntegrityError(message) from exc
         result[note["id"]] = (note, text, path)
     return result
 
@@ -258,36 +304,68 @@ def validate(note, types, require_cluster=False):
 
 
 def events(root):
-    return [json.loads(p.read_text()) for p in sorted((root / ".history").glob("*.json"))]
+    directory = root / ".history"
+    reject_symlinks(root, directory)
+    result = []
+    for path in sorted(directory.glob("*.json")):
+        reject_symlinks(root, path)
+        if not path.is_file():
+            raise IntegrityError("Invalid journal file. Inspect .history with hive check.")
+        result.append(json.loads(path.read_text(encoding="utf-8")))
+    return result
+
+
+def has_pending(root):
+    path = root / ".pending.json"
+    return path.is_symlink() or path.exists()
 
 
 def pending(root):
     path = root / ".pending.json"
-    return json.loads(path.read_text()) if path.exists() else None
+    reject_symlinks(root, path)
+    if path.exists():
+        if not path.is_file():
+            raise IntegrityError("Invalid pending transaction file. Inspect .pending.json before recovery.")
+        event = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(event, dict) or not event.get("id") or not event.get("changes"):
+            raise IntegrityError("Invalid pending transaction record. Preserve .pending.json and inspect the interrupted write.")
+        return event
+    return None
 
 
 def require_clean(root):
-    if pending(root):
+    if has_pending(root):
         if __package__:
             from .agent_contract import AgentError
         else:
             from agent_contract import AgentError
-        raise AgentError('RECOVERY_REQUIRED', "Interrupted write: run recover before using the wiki")
+        raise AgentError('RECOVERY_REQUIRED', "Interrupted write: run hive recover before using the wiki")
+
+
+def journal_heads(root):
+    latest = {}
+    try:
+        for event in events(root):
+            for change in event["changes"]:
+                ident = change["id"]
+                if (not ID.fullmatch(ident) or change["before"] != latest.get(ident)
+                        or not isinstance(change["after"], str)):
+                    raise ValueError("Broken history chain")
+                latest[ident] = change["after"]
+    except IntegrityError:
+        raise
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        raise IntegrityError("The history chain could not be read consistently. Inspect .history and run hive check.") from exc
+    return latest
 
 
 def audit(root, notes):
-    latest = {}
-    for event in events(root):
-        for change in event["changes"]:
-            ident = change["id"]
-            expected = latest.get(ident)
-            if change["before"] != expected:
-                raise ValueError("Broken history chain: " + ident)
-            latest[ident] = change["after"]
-    for ident in set(latest) | set(notes):
-        actual = notes[ident][1] if ident in notes else None
-        if latest.get(ident) != actual:
-            raise ValueError("Unjournaled change or missing file: " + ident)
+    latest = journal_heads(root)
+    changed = sorted(ident for ident in latest.keys() & notes.keys() if latest[ident] != notes[ident][1])
+    added = sorted(notes.keys() - latest.keys())
+    missing = sorted(latest.keys() - notes.keys())
+    if changed or added or missing:
+        raise ExternalEdits(changed, added, missing)
 
 
 def freshness(note):
@@ -377,9 +455,9 @@ def signature(root):
 def rebuild(root, notes=None):
     require_clean(root)
     notes = load_notes(root) if notes is None else notes
+    audit(root, notes)
     for note, _, _ in notes.values():
         validate(note, {i: n[0]["type"] for i, n in notes.items()})
-    audit(root, notes)
     render_indexes(root, notes)
     cache = root / ".cache"
     cache.mkdir(exist_ok=True)
@@ -428,24 +506,144 @@ def database(root):
             yield db
 
 
+def _local_index_paths(root):
+    wiki = root / "wiki"
+    routes = wiki / "clusters"
+    for path in (root / ".cache", wiki / "archive", routes, *(wiki / kind for kind in KINDS)):
+        reject_symlinks(root, path)
+    # Existing cluster folders can redirect the reconstruction of nested indexes.
+    for path in routes.rglob("*"):
+        if path.name != "index.md" and path.is_symlink():
+            reject_symlinks(root, path)
+
+
 def finish(root, event):
-    # Accept only the old or already-written new state during crash recovery.
+    adopted = event.get("operation") == "adopt"
+    if adopted:
+        _local_index_paths(root)
+    # Adoption records observed bytes without ever overwriting the editor's file.
+    # Ordinary recovery accepts either the old or already-written new state.
     for change in event["changes"]:
         n = decode(change["after"])
         path = path_for(root, n)
-        actual = path.read_text() if path.exists() else None
-        if actual not in (change["before"], change["after"]):
-            raise ValueError("Recovery conflict; preserve pending transaction: " + n["id"])
-    for change in event["changes"]:
-        atomic(path_for(root, decode(change["after"])), change["after"])
+        reject_symlinks(root, path)
+        if path.exists() and not path.is_file():
+            raise IntegrityError("Recovery conflict; preserve pending transaction: " + n["id"])
+        actual = read_note(path) if path.exists() else None
+        allowed = (change["after"],) if adopted else (change["before"], change["after"])
+        if actual not in allowed:
+            raise IntegrityError("Recovery conflict; preserve pending transaction: " + n["id"])
     journal = root / ".history" / (event["id"] + ".json")
+    if journal.parent != root / ".history":
+        raise IntegrityError("Invalid pending event path. Preserve .pending.json.")
+    reject_symlinks(root, journal)
+    if not adopted:
+        for change in event["changes"]:
+            atomic(path_for(root, decode(change["after"])), change["after"])
     serialized = json.dumps(event, ensure_ascii=False, indent=2) + "\n"
-    if journal.exists() and journal.read_text() != serialized:
-        raise ValueError("History event collision")
+    if journal.exists() and journal.read_text(encoding="utf-8") != serialized:
+        raise IntegrityError("History event collision")
     if not journal.exists():
         atomic(journal, serialized)
+    if adopted:
+        # Invalidate the cache before completing the transaction even if an
+        # editor preserved the original file size and mtime.
+        (root / ".cache/search.sqlite").unlink(missing_ok=True)
     (root / ".pending.json").unlink()
-    rebuild(root)
+    if adopted:
+        try:
+            rebuild(root)
+        except (IntegrityError, OSError, sqlite3.Error):
+            return False
+    else:
+        rebuild(root)
+    return True
+
+
+def commit(root, entries, actor, reason, context, at, *, operation=None):
+    event = {"id": dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex[:8],
+             "at": at, "actor": actor, "reason": reason, "context": context, "changes": entries}
+    if operation:
+        event["operation"] = operation
+    atomic(root / ".pending.json", json.dumps(event, ensure_ascii=False, indent=2) + "\n")
+    return event["id"], finish(root, event)
+
+
+def _diff_lines(raw):
+    """Show nonprinting bytes and line endings without putting controls on a terminal."""
+    for line in raw.splitlines(keepends=True):
+        line = line.removesuffix("\n") if line.endswith("\n") else line + " [no LF]"
+        yield "".join(ch if ch.isprintable() or ch == "\t" else ascii(ch)[1:-1] for ch in line)
+
+
+def adopt(root, ident, actor, reason, context, *, apply_edit=False, preview=None):
+    """Record the exact external bytes of one existing note after review."""
+    if __package__:
+        from .agent_contract import AgentError
+        from .runtime_paths import cli_command
+    else:
+        from agent_contract import AgentError
+        from runtime_paths import cli_command
+    if not ID.fullmatch(ident):
+        raise ValueError("Choose an existing journaled note ID")
+    if not actor.strip() or not reason.strip() or not context.strip():
+        raise ValueError("Actor, reason and context/source reference are required")
+    if apply_edit and not preview:
+        raise AgentError("REVISION_CONFLICT", "A matching prior --preview token is required. Preview the edit first.")
+    lock = root / ".hive.lock"
+    reject_symlinks(root, lock)
+    if not lock.is_file():
+        raise ValueError("Choose an existing vault with its write lock")
+    with locked(root, shared=not apply_edit):
+        require_clean(root)
+        _local_index_paths(root)
+        latest = journal_heads(root)
+        if ident not in latest:
+            raise ValueError("Choose an existing journaled note ID")
+        before = latest[ident]
+        notes = {key: decode(text) for key, text in latest.items()}
+        old = notes[ident]
+        path = path_for(root, old)
+        reject_symlinks(root, path)
+        if not path.is_file():
+            raise ValueError("Canonical note file is missing or has moved. Restore " + str(path.relative_to(root)))
+        after = read_note(path)
+        if before == after:
+            raise ValueError("No external edit for " + ident + ". Run hive check for other changes.")
+        relative = str(path.relative_to(root))
+        binding = {"version": 1, "root": str(root), "id": ident, "path": relative,
+                   "before_revision": digest(before), "after_revision": digest(after),
+                   "actor": actor, "reason": reason, "context": context}
+        token = digest(json.dumps(binding, sort_keys=True, ensure_ascii=False))
+        if apply_edit and token != preview:
+            raise AgentError("REVISION_CONFLICT", "The preview no longer matches the note or provenance. Preview again.")
+        updated = decode(after)
+        if updated.get("id") != ident or updated.get("type") != old["type"] or updated.get("created") != old["created"]:
+            raise ValueError("A journaled note's ID, type, location and creation time must remain unchanged.")
+        notes[ident] = updated
+        types = {key: note["type"] for key, note in notes.items()}
+        try:
+            for key, note in notes.items():
+                validate(note, types, require_cluster=(key == ident))
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise ValueError("Invalid note metadata. Repair the frontmatter before previewing again.") from exc
+        result = {key: binding[key] for key in ("id", "path", "before_revision", "after_revision", "actor", "reason", "context")}
+        if apply_edit:
+            reject_symlinks(root, path)
+            if read_note(path) != after:
+                raise AgentError("REVISION_CONFLICT", "The file changed during adoption. Preview again.")
+            event, indexed = commit(root, [{"id": ident, "before": before, "after": after}],
+                                    actor, reason, context, now(), operation="adopt")
+            detail = "Saved external edit to journal event " + event + "."
+            if not indexed:
+                detail += " Run hive check, then hive reindex to refresh the index."
+            return {**result, "status": "adopted", "event": event, "indexed": indexed, "text": detail}
+        difference = "\n".join(difflib.unified_diff(list(_diff_lines(before)), list(_diff_lines(after)),
+                                                     "journal/" + relative, "working/" + relative, lineterm=""))
+        command = shlex.join(cli_command(root, "adopt", ident, "--actor", actor, "--reason", reason,
+                                         "--context", context, "--apply", "--preview", token))
+        text = "Review external edit to " + relative + "\n\n" + difference + "\n\nApply with:\n" + command
+        return {**result, "status": "preview", "preview": token, "diff": difference, "text": text}
 
 
 def apply(root, payload, actor, reason, context, respect_pause=False):
@@ -497,10 +695,8 @@ def apply(root, payload, actor, reason, context, respect_pause=False):
             prospective[ident] = (n, after, path_for(root, n))
         for n, _, _ in prospective.values():
             validate(n, {i: record[0]["type"] for i, record in prospective.items()})
-        event = {"id": dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex[:8], "at": at, "actor": actor, "reason": reason, "context": context, "changes": entries}
-        atomic(root / ".pending.json", json.dumps(event, ensure_ascii=False, indent=2) + "\n")
-        finish(root, event)
-        return {"event": event["id"], "updated": ids}
+        event, _ = commit(root, entries, actor, reason, context, at)
+        return {"event": event, "updated": ids}
 
 
 SUFFIXES = ("ern", "en", "er", "es", "et", "e", "s", "n", "t")
@@ -512,11 +708,17 @@ noch nun nur ob oder ohne sein seine selbst sich sie sind so soll sollen statt u
 vom von vor war waren was welche welchem welchen welcher welches wenn wer werde werden wie wieder wir wird
 wo woher woran worauf warum wurde zu zum zur zwischen weiss weisst wissen bitte zeig zeigen sag sagen mochte
 mochten hat haben wird werden lauft laufen kommen kommt liegt liegen gemacht getroffen ansehen dazu daruber
-the a an and are as at be by can do does for from how i in is it me my of on or our that this to was we what when
+the a an and are as at be by can did do does for from how i in is it me my of on or our that this to was we what when
 where which who why will with you your about tell show know only weiß weißt beim liebsten bekommt bekommen
 gehen geht mehrere mehr etwas dazu""".split())
+SEARCH_DECISION_VERBS = {"decide", "decided", "entscheiden", "entschieden", "beschlossen", "festgelegt", "gewahlt"}
+SEARCH_USE_VERBS = {"use", "uses", "used", "using", "nutzen", "nutzt", "verwenden", "verwendet", "benutzen", "benutzt"}
+DATABASE_TERMS = {"database", "databases", "datenbank", "datenbanken", "datenbanksystem", "datenbanksysteme"}
+POSTGRES_TERMS = {"postgres", "postgresql"}
+DATABASE_PRODUCTS = POSTGRES_TERMS | {"sqlite"}
 SEARCH_GENERIC_ANCHORS = {"entscheidung", "projekt", "erfahrung", "kontext", "stand", "daten", "information",
-                          "frage", "thema", "system", "arbeit", "notiz", "wissen", "status", "quelle"}
+                          "frage", "thema", "system", "arbeit", "notiz", "wissen", "status", "quelle",
+                          "decision", "project", "question", "topic", "information", "data"} | DATABASE_TERMS
 SEARCH_LOG_LIMIT = 500
 
 
@@ -536,12 +738,33 @@ def search_words(text):
 def query_terms(query):
     if not isinstance(query, str) or len(query) > 2000:
         raise ValueError("Search query must be text with at most 2,000 characters")
-    return list(dict.fromkeys(w for w in search_words(query) if w not in SEARCH_STOPWORDS))[:32]
+    tokens = search_words(query)
+    stop = SEARCH_STOPWORDS
+    if tokens and (tokens[0] in SEARCH_STOPWORDS or query.rstrip().endswith("?")):
+        stop = stop | SEARCH_DECISION_VERBS | SEARCH_USE_VERBS
+    return list(dict.fromkeys(w for w in tokens if w not in stop))[:32]
+
+
+def _search_forms(word):
+    if word in DATABASE_TERMS:
+        # A category can match a named product. A product query stays specific.
+        return sorted(DATABASE_TERMS | DATABASE_PRODUCTS), None
+    if word in POSTGRES_TERMS:
+        return sorted(POSTGRES_TERMS), None
+    if word in DATABASE_PRODUCTS:
+        return [word], None
+    prefix = stem(word)
+    return [word], prefix if len(prefix) >= 4 else None
 
 
 def matched_terms(terms, text):
     tokens = set(search_words(text))
-    return [w for w in terms if w in tokens or (len(stem(w)) >= 4 and any(t.startswith(stem(w)) for t in tokens))]
+    matched = []
+    for word in terms:
+        exact, prefix = _search_forms(word)
+        if not tokens.isdisjoint(exact) or (prefix is not None and any(t.startswith(prefix) for t in tokens)):
+            matched.append(word)
+    return matched
 
 
 def search(root, query, limit=5, include_deprecated=False, cluster=None, include_archived=False):
@@ -553,7 +776,13 @@ def search(root, query, limit=5, include_deprecated=False, cluster=None, include
         raise ValueError("Search limit must be between 1 and 100")
     # Literal terms only: no raw FTS syntax or SQL interpolation from input. A stem of at least
     # four letters also matches as prefix, so inflections and compounds ("Kalenders", "Prüfungspräferenz") count.
-    expression = " OR ".join('"' + w + '"' + (' OR "' + stem(w) + '"*' if len(stem(w)) >= 4 else "") for w in words)
+    forms = {}
+    for word in words:
+        exact, prefix = _search_forms(word)
+        forms.update(dict.fromkeys('"' + term + '"' for term in exact))
+        if prefix is not None:
+            forms['"' + prefix + '"*'] = None
+    expression = " OR ".join(forms)
     with database(root) as db:
         rows = db.execute("SELECT search.id, metadata, revision, path, bm25(search,0,8,5,4,1), search.title, search.summary, search.terms, search.body FROM search JOIN notes ON search.id=notes.id WHERE search MATCH ? ORDER BY 5", (expression,)).fetchall()
         corpus = [json.loads(row[0]) for row in db.execute("SELECT metadata FROM notes")]
@@ -561,6 +790,10 @@ def search(root, query, limit=5, include_deprecated=False, cluster=None, include
     salient = {n["id"]: matched_terms(words, n["title"] + " " + " ".join(n["aliases"])) for n in corpus}
     frequencies = {w: sum(w in terms for terms in salient.values()) for w in words}
     ranked = []
+    query_tokens = set(search_words(query))
+    decision_lookup = bool(query_tokens & SEARCH_DECISION_VERBS or
+                           (query_tokens & DATABASE_TERMS and query_tokens & SEARCH_USE_VERBS))
+    generic_stems = {stem(term) for term in SEARCH_GENERIC_ANCHORS}
     # Require a majority of meaningful terms, or a specific title/alias anchor.
     # An anchor lets a named subject survive unfamiliar descriptive wording.
     # Common question words cannot turn an unknown topic into plausible hits.
@@ -576,13 +809,13 @@ def search(root, query, limit=5, include_deprecated=False, cluster=None, include
             continue
         matched = matched_terms(words, " ".join((title, summary, terms, body)))
         anchors = [w for w in salient.get(ident, []) if frequencies[w] <= max(1, len(corpus) // 8)
-                   and stem(w) not in {stem(g) for g in SEARCH_GENERIC_ANCHORS}]
+                   and stem(w) not in generic_stems]
         if len(matched) < minimum and not anchors:
             continue
         result = {"id": ident, "cluster": cluster_for(n), "title": n["title"], "summary": n["summary"], "status": n["status"], "evidence": n["evidence"], "freshness": freshness(n), "stale_after": n["stale_after"], "revision": revision, "path": str(root / path), "query_terms": words, "matched_terms": matched, "coverage": round(len(matched) / len(words), 3)}
         result["anchor_terms"] = anchors
-        ranked.append((score, -len(matched), ident, result))
-    return [r[3] for r in sorted(ranked)[:limit]]
+        ranked.append((-len(matched), decision_lookup and n["type"] != "decision", score, ident, result))
+    return [r[-1] for r in sorted(ranked)[:limit]]
 
 
 def _search_log(root, filename, entry):
@@ -829,22 +1062,25 @@ def session_hook(root, agent='claude', budget=1200):
             return 0
         if project_context.resolve_project(root, target) is None:
             return 0
-        offered = sessions.open_session(root, target, agent=agent, budget=budget,
+        prefix = ("HiveMind session: {session_id}\n"
+                  "Project write reference: {reference}\nSession opened: {opened_at}\n"
+                  "Use supplied context; refresh with session-context only when needed. Follow the connected handoff commands. "
+                  "Simple handoff: use session-close --record with the project write reference, source and observation time; no session-draft. Read existing decisions/questions with evidence ID@REVISION --section handoff. Only named step_updates change. For requested close without change use session-close --no-change.\n\n")
+        offered = sessions.open_session(root, target, agent=agent, budget=budget - len(prefix.split()),
                                         runtime_id=event.get('session_id'),
                                         runtime_source=event.get('source') if event.get('session_id') is not None else None)
-        # Keep the receipt and continuation instructions in the host's preview
-        # even when long additionalContext is moved to a separate file.
-        text = ("HiveMind session: " + offered["session_id"] +
-                 "\nContext offered; use has not been verified. "
-                 "Reuse this session ID. Once the task is known: session-context SESSION_ID --task TASK. "
-                 "Save durable knowledge via session-draft / session-close; "
-                 "step_updates change only named IDs; omitted steps remain intact. "
-                 "If there is nothing new, close with session-close --no-change.\n\n")
-        text += offered["context"]["text"]
+        project = offered['workflow']['project']
+        reference = project['id'] + '@' + project['revision']
+        text = prefix.format(session_id=offered["session_id"], reference=reference,
+                             opened_at=offered['opened_at']) + offered["context"]["text"]
     except Exception as error:
-        # Stored context is optional; a broken store or input must never disturb a session start.
-        print("HiveMind brief: " + str(error), file=sys.stderr)
-        return 0
+        # Only known vault issues become context. Other errors can contain file
+        # or event contents and remain host-side diagnostics.
+        if isinstance(error, IntegrityError) or getattr(error, "code", None) == "RECOVERY_REQUIRED":
+            text = "HiveMind vault needs attention. Project context was withheld. " + str(error)
+        else:
+            print("HiveMind brief: " + str(error), file=sys.stderr)
+            return 0
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
     return 0
 
@@ -853,9 +1089,9 @@ def check(root):
     with locked(root, shared=(root / ".hive.lock").exists()):
         require_clean(root)
         notes = load_notes(root)
+        audit(root, notes)
         for n, _, _ in notes.values():
             validate(n, {i: record[0]["type"] for i, record in notes.items()})
-        audit(root, notes)
     due = []
     for ident, (n, _, _) in notes.items():
         reasons = []
@@ -925,8 +1161,9 @@ def main(argv=None):
             result = check(root)
         elif args.command in {"reindex", "recover"}:
             with locked(root):
-                if args.command == "recover" and pending(root):
-                    finish(root, pending(root))
+                event = pending(root) if args.command == "recover" else None
+                if event is not None:
+                    finish(root, event)
                     result = {"recovered": True}
                 else:
                     result = {"indexed": rebuild(root)}
@@ -940,7 +1177,7 @@ def main(argv=None):
                 if args.command == "neighbors":
                     result = [{"origin": o, "relation": r, "target": t} for o, r, t in db.execute("SELECT * FROM edges WHERE origin=? OR target=?", (args.id, args.id))]
                 else:
-                    text = (root / row[2]).read_text()
+                    text = read_note(root / row[2])
                     if digest(text) != row[1]:
                         raise ValueError("Concurrent change: retry read")
                     note = decode(text)
@@ -962,4 +1199,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    sys.modules["hive"] = sys.modules[__name__]
     sys.exit(main())

@@ -29,19 +29,24 @@ from integrations import ingest
 class JobsE2E(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.fixture = Path(self.temp.name).resolve()
+        self.root = self.fixture/'vault'
         self.children = []
-        (self.root/'config').mkdir()
+        project=self.fixture/'project';project.mkdir()
+        home=self.fixture/'home';home.mkdir()
+        self.env={**os.environ,'HOME':str(home),'PYTHONDONTWRITEBYTECODE':'1'}
+        subprocess.run([sys.executable,'-B',str(BASE.parent/'run.py'),'--root',str(self.root),'init','--yes','--agent','none','--project',str(project),'--name','Synthetic'],env=self.env,check=True,capture_output=True)
         (self.root/'config/sources.json').write_text(json.dumps({
             'version': 1, 'files': [], 'remote': [
                 {'id': 'gmail', 'lookback_days': 7}],
             'calendar': {'enabled': False}}))
-        binary = self.root/'bin'
+        binary = self.fixture/'bin'
         binary.mkdir()
         fake = binary/'codex'
-        fake.write_text("""#!/usr/bin/env python3
-import json,os,pathlib,re,sys,time
-root=pathlib.Path.cwd()
+        fake.write_text("#!"+sys.executable+"\nROOT="+repr(str(self.root))+"\n"+"""import json,os,pathlib,re,sys,time
+root=pathlib.Path(ROOT)
+stage=pathlib.Path(sys.argv[sys.argv.index('--cd')+1])
+output=pathlib.Path(sys.argv[sys.argv.index('--output-last-message')+1])
 mode=(root/'mode').read_text() if (root/'mode').exists() else 'complete'
 if mode=='hold':
  with (root/'agent-starts').open('a') as proof:proof.write('started\\n')
@@ -51,11 +56,10 @@ if mode=='hold':
 time.sleep(.6)
 if mode=='process_failure':sys.exit(7)
 if mode=='missing':sys.exit(0)
-active=json.loads((root/'.state/sources.json').read_text())['active_run']
-folder=root/'.state/runs'/active
-manifest=json.loads((folder/'manifest.json').read_text())
+manifest=json.loads((stage/'input.json').read_text())['manifest']
+active=manifest['id']
 if mode=='malformed':
- (folder/'receipts.json').write_text('{}')
+ output.write_text('{}')
  sys.exit(0)
 rows=[]
 for source in manifest['local']:
@@ -64,10 +68,14 @@ for ident,window in manifest['windows'].items():
  row={'id':ident,'kind':'remote','status':'complete','window':window,'coverage':{'complete':True,'pages_complete':True,'permission':'granted','continuation':None,'page_count':1},'items':[],'counts':{'examined':0},'reason':'Synthetic empty provider response.'}
  if mode=='partial':row={'id':ident,'kind':'remote','status':'blocked','reason':'Synthetic provider unavailable.'}
  rows.append(row)
-(folder/'receipts.json').write_text(json.dumps({'schema_version':1,'run_id':active,'sources':rows}))
+output.write_text(json.dumps({'schema_version':1,'run_id':active,'changes':[],'receipts':{'schema_version':1,'run_id':active,'sources':rows}}))
 """)
         fake.chmod(0o700)
-        self.env = {**os.environ, 'PATH': str(binary)+os.pathsep+os.environ.get('PATH', '')}
+        self.binary=fake
+        self.env['PATH']=str(binary)+os.pathsep+os.environ.get('PATH','')
+        profile=self.fixture/'profile';profile.mkdir()
+        registration="from pathlib import Path; import json,sys; from hivemind import provider_trust,feature_controls; root=Path(sys.argv[1]); prefs=dict(feature_controls.DEFAULTS,codex=sys.argv[2],agent_home=sys.argv[3],sync_enabled=True); provider_trust.register(root,provider_trust.candidate(root,prefs)); (root/'config/features.json').write_text(json.dumps(prefs))"
+        subprocess.run([sys.executable,'-B','-c',registration,str(self.root),str(fake),str(profile)],cwd=BASE.parent,env=self.env,check=True,capture_output=True)
 
     def tearDown(self):
         (self.root/'release-agent').touch()
@@ -108,10 +116,10 @@ def delayed(*args,**kwargs):
 jobs.ingest.abort_run=delayed
 sys.exit(jobs.worker(root,sys.argv[3],sys.argv[4]))'''
             command = [sys.executable, '-c', script, str(BASE), str(self.root),
-                       job_id, str(self.root/'bin/codex')]
+                       job_id, str(self.binary)]
         else:
             command = [sys.executable, str(BASE/'jobs.py'), '--root', str(self.root),
-                       '--worker', job_id, '--codex', str(self.root/'bin/codex')]
+                       '--worker', job_id, '--codex', str(self.binary)]
             if timeout is not None:command += ['--agent-timeout', str(timeout)]
         child = subprocess.Popen(command, env=self.env, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
@@ -207,7 +215,7 @@ print(json.dumps(jobs.start(root,plan=plan,dispatch_id=ident)))"""
         self.assertNotIn('gmail', state['checkpoints'])
 
     def test_stranded_worker_recovers_explicitly(self):
-        (self.root/'.state').mkdir()
+        (self.root/'.state').mkdir(exist_ok=True)
         (self.root/'.state/job.json').write_text(json.dumps({
             'status': 'running', 'job_id': 'synthetic-stranded',
             'started_at': '2000-01-01T00:00:00Z', 'pid': 99999999,
@@ -218,7 +226,7 @@ print(json.dumps(jobs.start(root,plan=plan,dispatch_id=ident)))"""
         self.assertEqual(self.done()['status'], 'complete')
 
     def test_reservation_gap_recovers_by_owner_and_preserves_foreign_run(self):
-        (self.root/'.state').mkdir()
+        (self.root/'.state').mkdir(exist_ok=True)
         job_id = uuid.uuid4().hex
         manifest = ingest.begin_run(self.root, owner=job_id)
         value = {'status':'running', 'job_id':job_id, 'pid':99999999,
@@ -294,7 +302,7 @@ def main():
     evidence = {
         'command': 'python3 scripts/verify_jobs.py', 'at': stamp,
         'environment': {'python': sys.version, 'platform': platform.platform()},
-        'fixtures': 'Temporary empty canonical store; synthetic capture; fake Codex executable in child PATH; calendar disabled. Owner gap/foreign reservation fixtures; actual test-owned worker Popen SIGKILL while fake agent waits for release; delayed abort barrier; internal short agent deadline. No live providers.',
+        'fixtures': 'Temporary initialized public vault/project and synthetic HOME; explicitly registered external fake Codex returning read-only proposals; synthetic capture; calendar disabled. Owner gap/foreign reservation fixtures; actual test-owned worker Popen SIGKILL while fake agent waits for release; delayed abort barrier; internal short agent deadline. No live providers.',
         'source_sha256': {name: hashlib.sha256((BASE/name).read_bytes()).hexdigest()
                           if (BASE/name).exists() else 'MISSING' for name in names},
         'tests': result.testsRun, 'failures': len(result.failures),

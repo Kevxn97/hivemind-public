@@ -24,7 +24,7 @@ def cli_command(root, *args):
     if source_entry.is_file() and (CODE.parent / 'pyproject.toml').is_file():
         command = [sys.executable, str(source_entry)]
     else:
-        command = [sys.executable, '-m', 'hivemind']
+        command = [sys.executable, '-P', '-m', 'hivemind']
     return [*command, '--root', str(Path(root).resolve()), *map(str, args)]
 
 

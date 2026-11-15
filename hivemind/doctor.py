@@ -40,18 +40,23 @@ def _check(ident, status, detail, **metadata):
 def _canonical(root):
     if not root.is_dir() or not (root / 'wiki').is_dir():
         return _check('canonical', 'error', 'Vault is missing; check the selected path.', state='missing_store'), None
-    if (root / '.pending.json').exists():
+    if hive.has_pending(root):
         return _check('canonical', 'error', 'Pending transaction: check the documented recover workflow before continuing.', state='pending_transaction'), None
     try:
         records = hive.load_notes(root)
+        hive.audit(root, records)
         types = {ident: row[0]['type'] for ident, row in records.items()}
         for note, _, _ in records.values():
             hive.validate(note, types)
-        hive.audit(root, records)
-        if (root / '.pending.json').exists():
+        if hive.has_pending(root):
             return _check('canonical', 'attention', 'A transaction started during the check; retry after it finishes.', state='changed_during_check'), None
         return _check('canonical', 'ok', 'The note structure and journal match in the observed state; this does not establish factual correctness.',
                       state='valid', notes=len(records)), records
+    except hive.ExternalEdits as error:
+        return _check('canonical', 'error', str(error), state='external_edits',
+                      changed=error.changed, untracked=error.added, missing=error.missing), None
+    except hive.IntegrityError as error:
+        return _check('canonical', 'error', str(error), state='invalid'), None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return _check('canonical', 'error', 'Note structure or journal cannot be read consistently; investigate with hive check.', state='invalid'), None
 
@@ -222,26 +227,39 @@ def _sessions(root):
         return _check('sessions', 'error', 'Session receipts are unreadable.', state='unreadable')
 
 
-def inspect(root, home=None):
+def inspect(root, home=None, *, codex_home=None, claude_home=None):
     """Return safe diagnostic metadata without creating or repairing anything."""
     root = Path(root).expanduser().resolve()
-    home = Path(home).expanduser().resolve() if home is not None else Path.home().resolve()
+    home = Path(home).expanduser().resolve() if home is not None else None
     canonical, records = _canonical(root)
     checks = [canonical, _projects(root, records), _sessions(root)]
-    for agent in ('codex', 'claude'):
-        checks.append(_rules(root, home, agent))
-        checks.extend(_hooks(root, home, agent))
+    if (root / '.hivemind.json').exists() or codex_home is not None or claude_home is not None:
+        if __package__:
+            from . import connections
+        else:
+            import connections
+        for agent, explicit in (('codex', codex_home), ('claude', claude_home)):
+            folder = explicit or (home / ('.' + agent) if home else None)
+            checks.extend(connections.inspect(root, agent, agent_home=folder)['checks'])
+    else:
+        legacy_home = home if home is not None else Path.home().resolve()
+        for agent in ('codex', 'claude'):
+            checks.append(_rules(root, legacy_home, agent))
+            checks.extend(_hooks(root, legacy_home, agent))
+
     summary = {status: sum(check['status'] == status for check in checks) for status in ('ok', 'attention', 'error')}
     status = 'error' if summary['error'] else 'attention' if summary['attention'] else 'ok'
-    return {'status': status, 'scope': 'read_only_disk_snapshot', 'summary': summary, 'checks': checks}
+    return {'status': status, 'scope': 'read_only_disk_snapshot', 'host_execution': 'unverified', 'summary': summary, 'checks': checks}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=default_vault())
     parser.add_argument('--home', type=Path)
+    parser.add_argument('--codex-home', type=Path)
+    parser.add_argument('--claude-home', type=Path)
     args = parser.parse_args()
-    print(json.dumps(inspect(args.root, args.home), ensure_ascii=False, indent=2))
+    print(json.dumps(inspect(args.root, args.home, codex_home=args.codex_home, claude_home=args.claude_home), ensure_ascii=False, indent=2))
     return 0  # Findings live in status; producing the diagnostic report succeeded.
 
 

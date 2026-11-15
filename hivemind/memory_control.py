@@ -113,7 +113,7 @@ def _list(records, events, args):
     return {'memories': rows, 'total': total, 'text': _safe('\n'.join(lines))}
 
 
-def _edit(records, args):
+def _edit(root, records, args):
     note, text, _ = _record(records, args.id)
     updated = copy.deepcopy(note)
     values = {'title': args.title, 'summary': args.summary,
@@ -136,11 +136,19 @@ def _edit(records, args):
             raise ValueError('A summary correction also requires the complete corrected --body or --body-file')
     updated.update(changed)
     source_id = 'correction-' + hive.digest(json.dumps([args.source, args.reason, changed], sort_keys=True))[:16]
-    source = {'id': source_id, 'resource': args.source, 'title': 'User correction · ' + args.reason,
-              'observed_at': hive.now()}
+    if __package__:
+        from . import evidence
+    else:
+        import evidence
+    source = evidence.attributed_source(root, source_id, args.source,
+                                        'User correction · ' + args.reason, hive.now())
     existing = next((s for s in updated['sources'] if s['id'] == source_id), None)
     if existing is None:
-        updated['sources'].append(source)
+        updated['sources'].insert(0, source)
+    else:
+        if existing.get('sha256') != source.get('sha256'):
+            raise ValueError('Correction source changed; use a distinct attributable source')
+        updated['sources'] = [existing] + [s for s in updated['sources'] if s['id'] != source_id]
     updated['evidence'] = 'reported'
     return [{'expected_revision': hive.digest(text), 'note': updated}], cleared
 
@@ -171,7 +179,7 @@ def _mutation(root, records, events, args):
         binding = {'state_revision': state['revision']}
     else:
         if command == 'edit':
-            changes, cleared = _edit(records, args)
+            changes, cleared = _edit(root, records, args)
         elif command == 'archive':
             note, text, _ = _record(records, args.id)
             if note.get('archived', False):
@@ -188,6 +196,8 @@ def _mutation(root, records, events, args):
                if key not in {'apply', 'preview', 'json', 'root', 'plain', 'body_file'}}
     if command == 'edit' and args.body_file is not None:
         request['body'] = changes[0]['note']['body']
+    if command == 'edit':
+        request['source_sha256'] = changes[0]['note']['sources'][0].get('sha256')
     token = hive.digest(json.dumps({'request': request, **binding}, sort_keys=True, ensure_ascii=False))
     result = {'status': 'preview', 'action': command, 'preview': token, 'cleared': cleared,
               'changes': [{'id': c['note']['id'], 'expected_revision': c['expected_revision'],

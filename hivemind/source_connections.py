@@ -26,7 +26,7 @@ hive sources setup calendar --agent claude
 hive sources setup mcp --agent codex --project PATH --name NAME --url HTTPS_URL
 hive sources capture --file selected.json
 
-hive remember "A durable project conclusion" --yes
+hive remember "Use SQLite for the pilot" --type decision --yes
 hive sources capture --kind gmail --title "Selected update" --summary "Reviewed conclusion" --source SOURCE --yes
 
 Run hive sources in a terminal for a guided menu.
@@ -60,6 +60,8 @@ def configure(sub):
     remember.add_argument('text', help='Durable summary, at most 280 characters')
     remember.add_argument('--project', help='Project name, cluster or registered folder; inferred when unique')
     remember.add_argument('--source', default='user:memory', help='Source reference, default user:memory')
+    remember.add_argument('--type', choices=('decision', 'lesson'), default='lesson',
+                          help='Save an explicitly chosen decision or lesson')
     remember.add_argument('--yes', action='store_true', help='Save this selection')
     return parser
 
@@ -334,7 +336,28 @@ def _validate_selection(value):
     return value
 
 
-def capture_selection(root, selection, *, apply=False, preview=None, yes=False):
+def remember_selection(root, project, summary, resource, note_type, *, setup=False):
+    summary = _text(summary, 'summary', 280)
+    resource = _text(resource, 'source resource', 2000)
+    title = summary[:80].rstrip()
+    source_title = 'First memory entered during setup' if setup else title
+    observed = hive.now()
+    for note, _, _ in project_context._records(root).values():
+        if note['summary'] != summary or hive.cluster_for(note) != project or note['type'] != note_type:
+            continue
+        supported_titles = {title, 'First memory'} if setup else {title}
+        previous = next((source for source in note['sources']
+                         if source['resource'] == resource and source['title'] == source_title
+                         and 'observed_at' in source), None)
+        if previous is not None and note['title'] in supported_titles:
+            observed = previous['observed_at']
+            title = note['title']
+            break
+    return {'project': project, 'title': title, 'summary': summary,
+            'source': {'kind': 'manual', 'resource': resource, 'title': source_title, 'observed_at': observed}}
+
+
+def capture_selection(root, selection, *, apply=False, preview=None, yes=False, note_type='lesson'):
     """Preview or journal one assembled selection using the normal capture writer.
 
     Explicit yes consent binds the internally previewed selection and revisions.
@@ -342,10 +365,12 @@ def capture_selection(root, selection, *, apply=False, preview=None, yes=False):
     """
     root = require_vault(Path(root).resolve())
     selected = _validate_selection(selection)
-    return _capture(root, _json(selected), selected, apply=apply, preview=preview, yes=yes)
+    return _capture(root, _json(selected), selected, apply=apply, preview=preview, yes=yes, note_type=note_type)
 
 
-def _capture(root, raw, selected, *, apply=False, preview=None, yes=False):
+def _capture(root, raw, selected, *, apply=False, preview=None, yes=False, note_type='lesson'):
+    if note_type not in {'lesson', 'decision'}:
+        raise ValueError('Choose a decision or lesson for the selected memory')
     supplied_preview = preview
     records = project_context._records(root)
     project_id = selected['project'].split('/')[-1]
@@ -354,10 +379,11 @@ def _capture(root, raw, selected, *, apply=False, preview=None, yes=False):
             or project[0]['sensitivity'] != 'internal' or hive.cluster_for(project[0]) != selected['project']):
         raise ValueError('Choose an active internal project in this vault')
     source = selected['source']
-    identity = _hash(json.dumps(selected, sort_keys=True, ensure_ascii=False).encode())
+    typed = selected if note_type == 'lesson' else {**selected, 'type': note_type}
+    identity = _hash(json.dumps(typed, sort_keys=True, ensure_ascii=False).encode())
     ident = 'source-' + identity[:24]
     at = hive.now()
-    note = {'id': ident, 'type': 'lesson', 'cluster': selected['project'],
+    note = {'id': ident, 'type': note_type, 'cluster': selected['project'],
             'title': selected['title'], 'summary': selected['summary'],
             'body': '# Selected source summary\n\n' + selected['summary'] + '\n\n'
                     'This user-reviewed selection is reported source content. Its source facts require independent verification.',
@@ -369,15 +395,16 @@ def _capture(root, raw, selected, *, apply=False, preview=None, yes=False):
             'stale_after': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=30)).isoformat(timespec='seconds').replace('+00:00', 'Z'),
             'created': at, 'generated': {'at': at, 'by': 'sources:capture'}}
     existing = records.get(ident)
-    if existing and any(existing[0].get(key) != note[key] for key in ('title', 'summary', 'cluster', 'sources', 'evidence', 'body')):
+    if existing and any(existing[0].get(key) != note[key] for key in ('title', 'summary', 'cluster', 'sources', 'evidence', 'body', 'type')):
         raise ValueError('Captured note has changed. Review its journalled revision before importing this selection again.')
     if existing:
         note = existing[0]
-    hive.validate(note, {key: row[0]['type'] for key, row in records.items()} | {ident: 'lesson'}, require_cluster=True)
+    hive.validate(note, {key: row[0]['type'] for key, row in records.items()} | {ident: note_type}, require_cluster=True)
     project_revision = hive.digest(project[1])
     expected = hive.digest(existing[1]) if existing else 'new'
     preview = _hash(_json({'version': 1, 'root': str(root), 'file_sha256': _hash(raw),
-                          'project': project_id, 'project_revision': project_revision, 'note_revision': expected}))
+                          'project': project_id, 'project_revision': project_revision, 'note_revision': expected,
+                          **({'note_type': note_type} if note_type != 'lesson' else {})}))
     applied, event = False, None
     if apply or yes:
         if not yes and supplied_preview != preview:
@@ -400,6 +427,8 @@ def _capture(root, raw, selected, *, apply=False, preview=None, yes=False):
     status = 'captured' if applied else 'already_captured' if existing else 'preview'
     text = selected['title'] + '\n' + selected['summary'] + '\n'
     text += 'Project ' + selected['project'] + '\nEvidence reported\nSource ' + source['resource'] + '\n'
+    if note_type != 'lesson':
+        text += 'Note type ' + note_type + '\n'
     text += 'Source title ' + source['title'] + '\nKind ' + source['kind'] + '\n'
     text += 'Observed ' + source['observed_at'] + '\n'
     text += 'Preview token ' + preview + '\n'
@@ -529,15 +558,19 @@ def _capture_input(root, args):
     if resource is None and interactive:
         resource = _ask('Source reference', 'user:memory' if kind == 'manual' else None)
     resource = resource or ('user:memory' if kind == 'manual' else None)
-    selection = {'project': project, 'title': title, 'summary': summary,
-                 'source': {'kind': kind, 'resource': resource, 'title': title,
-                            'observed_at': getattr(args, 'observed_at', None) or hive.now()}}
+    note_type = getattr(args, 'type', 'lesson') if remembering else 'lesson'
+    if remembering:
+        selection = remember_selection(root, project, summary, resource, note_type)
+    else:
+        selection = {'project': project, 'title': title, 'summary': summary,
+                     'source': {'kind': kind, 'resource': resource, 'title': title,
+                                'observed_at': getattr(args, 'observed_at', None) or hive.now()}}
     result = capture_selection(root, selection, apply=getattr(args, 'apply', False),
-                               preview=getattr(args, 'preview', None), yes=args.yes)
+                               preview=getattr(args, 'preview', None), yes=args.yes, note_type=note_type)
     if interactive and result['status'] == 'preview':
         print(_human_capture(result), file=sys.stderr)
         if _confirm('Save this selection'):
-            result = capture_selection(root, selection, apply=True, preview=result['preview'])
+            result = capture_selection(root, selection, apply=True, preview=result['preview'], note_type=note_type)
         else:
             result['status'] = 'cancelled'
             result['text'] = 'Not saved.'

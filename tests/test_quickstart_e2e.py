@@ -143,6 +143,25 @@ class QuickstartE2E(unittest.TestCase):
         context = self.call('session-open', self.project, '--agent', 'codex')['context']['text']
         self.assertIn('Synthetic first memory', context)
 
+    def test_explicit_decisions_keep_their_content_title_and_reported_evidence(self):
+        first = 'SQLite is the storage engine for the fictional pilot.'
+        setup = self.setup_project('--remember', first, '--remember-type', 'decision')
+        self.assertEqual(setup['memory']['note']['type'], 'decision')
+        self.assertEqual(setup['memory']['note']['title'], first)
+        self.assertEqual(setup['memory']['note']['evidence'], 'reported')
+        self.assertEqual(self.setup_project('--remember', first, '--remember-type', 'decision')['memory']['status'],
+                         'already_captured')
+        second = 'Use one active worker for ingestion.'
+        draft = self.call('remember', second, '--type', 'decision')
+        self.assertEqual((draft['status'], draft['note']['type'], draft['note']['title']),
+                         ('preview', 'decision', second))
+        saved = self.call('remember', second, '--type', 'decision', '--yes')
+        self.assertEqual((saved['note']['type'], saved['note']['evidence']), ('decision', 'reported'))
+        self.assertEqual(self.call('remember', second, '--type', 'decision', '--yes')['status'], 'already_captured')
+        context = self.call('session-open', self.project)['context']['text']
+        self.assertIn(first, context)
+        self.assertIn(second, context)
+
     def test_project_name_conflict_and_invalid_inputs_preserve_existing_data(self):
         self.setup_project()
         canonical = snapshot(self.vault / 'wiki')

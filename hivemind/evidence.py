@@ -87,6 +87,37 @@ def _source(root, source):
     return ('hash_matched' if source.get('sha256') else 'unhashed_current_file'), text, actual
 
 
+def attributed_source(root, ident, resource, title, observed_at):
+    """Describe explicit evidence; fingerprint bounded local source bytes.
+
+    External resources remain references. A claimed local source must actually
+    be readable text, not a missing file or a symlink silently treated as a URL.
+    """
+    source = {'id': ident, 'resource': resource, 'title': title, 'observed_at': observed_at}
+    if not isinstance(resource, str) or not resource.strip():
+        raise AgentError('INVALID_ARGUMENT', 'An attributable source is required')
+    root = Path(root).resolve()
+    parsed = urlparse(resource)
+    if parsed.scheme in ('', 'file') and not parsed.netloc:
+        path = Path(unquote(parsed.path))
+        if not path.is_absolute():
+            path = root / path
+        resolved = path.resolve()
+        local = any(candidate.is_relative_to(root / name)
+                    for candidate in (path, resolved) for name in ('sources', 'INBOX'))
+        if local:
+            # System/root aliases can name the vault, but links into or inside
+            # an evidence store must not bypass its capture policy.
+            if any(p.is_symlink() and not root.is_relative_to(p.resolve())
+                   for p in (path, *path.parents)):
+                raise AgentError('INVALID_ARGUMENT', 'Local evidence must not use symlinks')
+            state, _, digest = _source(root, source)
+            if state != 'unhashed_current_file':
+                raise AgentError('INVALID_ARGUMENT', 'Local evidence is unavailable: ' + state)
+            source['sha256'] = digest
+    return source
+
+
 def read(root, reference, section=None, source_id=None, offset=0, limit=4000, max_bytes=None):
     maximum = context_packet.byte_limit(max_bytes)
     if any(isinstance(v, bool) or not isinstance(v, int) for v in (offset, limit)) or offset < 0 or not 1 <= limit <= 16000:

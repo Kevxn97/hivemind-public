@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Single active, bounded Codex sync. Receipts, not process exit, prove completion.
 
-Uses the existing Codex login, model and approval configuration. No new API key,
+Uses the existing Codex login and model with per-run read-only commands. No new API key,
 provider, scheduler or permission bypass. Raw agent/provider output is discarded.
 Run metadata, bounded coverage receipts and journaled knowledge remain local.
 """
@@ -17,12 +17,12 @@ if __package__:
     from .runtime_paths import default_vault
 else:
     from runtime_paths import default_vault
-import shutil
 import signal
 import subprocess
 import sys
 import time
 import uuid
+import tempfile
 
 if __package__:
     from .integrations import ingest
@@ -172,15 +172,13 @@ def view(root):
 
 def start(root, *, plan=None, dispatch_id=None):
     root = Path(root).resolve()
-    if (root / '.hivemind.json').exists():
-        if __package__:
-            from . import feature_controls
-        else:
-            sys.path.insert(0,str(BASE.parent))
-            from hivemind import feature_controls
-        preferences=feature_controls.require_sync(root)
+    if __package__:
+        from . import feature_controls, sync_boundary
     else:
-        preferences=None
+        sys.path.insert(0, str(BASE.parent))
+        from hivemind import feature_controls, sync_boundary
+    sync_boundary.safe_tree(root)
+    preferences = feature_controls.require_sync(root)
     if dispatch_id is not None:dispatch_path(root,dispatch_id)
     if plan is not None:
         plan=ingest.validate_plan(root,plan)
@@ -199,10 +197,7 @@ def start(root, *, plan=None, dispatch_id=None):
             accepted=json.loads(receipt.read_text()) if receipt.exists() else None
             if accepted and not accepted.get('start_failed',False):return public(accepted)
         plan=plan if plan is not None else ingest.prepare_plan(root,dispatch_id=dispatch_id)
-        binary = preferences['codex'] if preferences else shutil.which('codex')
-        if not binary:
-            fallback = Path.home()/'.local/bin/codex'
-            binary = str(fallback) if fallback.is_file() else None
+        binary = preferences['codex']
         value = {'status': 'running', 'job_id': uuid.uuid4().hex,
                  'dispatch_id':dispatch_id,'plan':plan,
                  'started_at': now(), 'message': 'Preparing sources.',
@@ -215,7 +210,7 @@ def start(root, *, plan=None, dispatch_id=None):
             child = subprocess.Popen(
                 [sys.executable, str(BASE/'jobs.py'), '--root', str(root),
                  '--worker', value['job_id'], '--codex', binary],
-                cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                cwd=BASE.parent, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, start_new_session=True,
                 close_fds=True)
         except OSError:
@@ -290,26 +285,43 @@ def agent_guard(root, run_id, binary, lease_fd, max_seconds):
     signal.signal(signal.SIGINT, interrupted)
     with os.fdopen(lease_fd, 'a'):
         try:
-            environment=None
-            if (Path(root)/'.hivemind.json').is_file():
-                if __package__:
-                    from . import feature_controls
-                else:
-                    sys.path.insert(0,str(BASE.parent))
-                    from hivemind import feature_controls
-                preferences=feature_controls.require_sync(root)
-                # Select only the explicitly configured profile. No credentials,
-                # model, approval policy, hooks or global configuration are copied.
-                environment=dict(os.environ,CODEX_HOME=preferences['agent_home'])
-            child = subprocess.Popen(
-                [binary, '--no-daemon', 'exec', '--ephemeral', '--skip-git-repo-check',
-                 '--cd', str(root), '--json', prompt_for(root, run_id)],
-                cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True,env=environment)
-            return child.wait(timeout=max_seconds)
+            if __package__:
+                from . import feature_controls, provider_trust, sync_boundary
+            else:
+                sys.path.insert(0, str(BASE.parent))
+                from hivemind import feature_controls, provider_trust, sync_boundary
+            sync_boundary.safe_tree(root)
+            # The accepted job may finish after sync is disabled. It must still
+            # use the exact externally approved executable and profile.
+            preferences = provider_trust.require(root, feature_controls.settings(root))
+            if str(Path(binary).resolve()) != preferences['codex']:
+                raise ValueError('Worker provider differs from its external approval.')
+            environment = dict(os.environ, CODEX_HOME=preferences['agent_home'])
+            with tempfile.TemporaryDirectory(prefix='hivemind-source-run-') as directory:
+                stage = Path(directory).resolve()
+                packet = sync_boundary.prepare(root, run_id, stage)
+                output = stage / 'proposal.json'
+                child = subprocess.Popen(
+                    [preferences['codex'], '--no-daemon', '--ask-for-approval', 'never',
+                     '-c', 'default_permissions=":read-only"',
+                     'exec', '--sandbox', 'read-only', '--ignore-rules', '--ephemeral',
+                     '--skip-git-repo-check', '--cd', str(stage), '--json',
+                     '--output-last-message', str(output), prompt_for(root, run_id)],
+                    cwd=stage, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True, env=environment)
+                try:
+                    result = child.wait(timeout=max_seconds)
+                    if result:
+                        return result
+                    proposal = sync_boundary.read_json(output)
+                    receipts = sync_boundary.apply_proposal(root, packet, proposal)
+                    ingest.atomic(Path(root)/'.state/runs'/run_id/'receipts.json', receipts)
+                    return 0
+                finally:
+                    stop_child(child)
         except subprocess.TimeoutExpired:
             return 124
-        except (OSError, InterruptedError):
+        except (OSError, ValueError, KeyError, TypeError, InterruptedError):
             return 125
         finally:
             stop_child(child)
@@ -335,13 +347,13 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
     try:
-        if (root/'.hivemind.json').is_file():
-            if __package__:
-                from . import feature_controls
-            else:
-                sys.path.insert(0,str(BASE.parent))
-                from hivemind import feature_controls
-            feature_controls.require_sync(root)
+        if __package__:
+            from . import feature_controls, provider_trust, sync_boundary
+        else:
+            sys.path.insert(0, str(BASE.parent))
+            from hivemind import feature_controls, provider_trust, sync_boundary
+        sync_boundary.safe_tree(root)
+        provider_trust.require(root, feature_controls.settings(root))
         with locked(root):
             current = read(root)
             if current.get('job_id') != job_id or current['status'] != 'running':
@@ -361,7 +373,7 @@ def worker(root, job_id, binary, max_seconds=MAX_SECONDS):
             [sys.executable, str(BASE/'jobs.py'), '--root', str(root),
              '--agent-run', run_id, '--codex', binary, '--lease-fd', str(runner.fileno()),
              '--agent-timeout', str(max_seconds)],
-            cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            cwd=BASE.parent, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True,
             pass_fds=(runner.fileno(),))
         update(root, job_id, phase='curating', agent_started_at=now())

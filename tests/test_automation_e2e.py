@@ -44,16 +44,16 @@ class AutomationE2E(unittest.TestCase):
         profile.mkdir()
         binary = self.fixture / 'synthetic-codex'
         # Exercise the real guard/worker/receipt path without a model or account.
-        binary.write_text('#!' + support.PYTHON + '\n' + '''
+        binary.write_text('#!' + support.PYTHON + '\nROOT='+repr(str(self.root))+'\n' + '''
 import json,os,pathlib,sys
-root=pathlib.Path(sys.argv[sys.argv.index('--cd')+1])
+root=pathlib.Path(ROOT)
+stage=pathlib.Path(sys.argv[sys.argv.index('--cd')+1])
 (root/'.state/provider-invocation.json').write_text(json.dumps({'argv':sys.argv[1:],'profile':os.environ.get('CODEX_HOME')}))
-run=json.loads((root/'.state/sources.json').read_text())['active_run']
-folder=root/'.state/runs'/run
-manifest=json.loads((folder/'manifest.json').read_text())
+manifest=json.loads((stage/'input.json').read_text())['manifest']
+run=manifest['id']
 receipts=[{'id':row['id'],'kind':'local','status':'complete','sha256':row['sha256'],
  'disposition':'irrelevant','note_ids':[],'reason':'Synthetic fixture; no durable knowledge.'} for row in manifest['local']]
-(folder/'receipts.json').write_text(json.dumps({'schema_version':1,'run_id':run,'sources':receipts}))
+pathlib.Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text(json.dumps({'schema_version':1,'run_id':run,'changes':[],'receipts':{'schema_version':1,'run_id':run,'sources':receipts}}))
 ''')
         binary.chmod(0o700)
         self.apply('provider', '--codex', str(binary), '--agent-home', str(profile))
