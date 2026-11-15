@@ -30,6 +30,7 @@
   "hivemind/evidence.py",
   "hivemind/feature_controls.py",
   "hivemind/hive.py",
+  "hivemind/hive_version.py",
   "hivemind/insights.py",
   "hivemind/integrations/__init__.py",
   "hivemind/integrations/calendar.py",

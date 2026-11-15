@@ -58,6 +58,16 @@ view it full size.
 
 [![HiveMind network view showing connections between example notes](assets/screenshots/network.png)](assets/screenshots/network.png)
 
+The header shows the release version and, in a source checkout, the short Git
+commit: for example, `v0.1.0a2 · abc1234 · local changes`. The Git label refreshes
+with the normal terminal snapshot, about every ten seconds. `local changes`
+includes staged, unstaged and untracked files; ignored files do not count.
+It describes the application checkout, independently of your selected vault.
+An installed package without its Git checkout shows `Git unavailable`; a new
+repository shows `no commit`. These checks are local and never contact a remote.
+Release versions remain manually managed in `hivemind/hive_version.py` and
+`pyproject.toml`.
+
 ## Install the `hive` command
 
 If you'd rather use `hive` as a command, you can install it in a virtual

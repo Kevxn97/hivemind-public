@@ -16,6 +16,7 @@ from pathlib import Path
 import pty
 import re
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -203,6 +204,76 @@ class TerminalE2E(unittest.TestCase):
         self.assertFalse((self.root/'.state/launcher.json').exists())
         self.assertFalse((self.root/'.state/job.json').exists())
 
+    def test_git_version_identity_handles_checkout_states_and_parent_repositories(self):
+        """Git identity is read from a source checkout, never from a vault or parent repo."""
+        repo=self.root/'app';repo.mkdir()
+        env=dict(os.environ, PYTHONPATH=str(BASE.parent), PYTHONDONTWRITEBYTECODE='1')
+
+        def git(*args):
+            return subprocess.check_output(['git','-C',str(repo),*args],text=True,stderr=subprocess.PIPE).strip()
+
+        def label(path=repo, custom_env=None):
+            code=('import sys;from pathlib import Path;from hivemind.hive_version import version_label;'
+                  'print(version_label(Path(sys.argv[1])))')
+            result=subprocess.run([sys.executable,'-c',code,str(path)],cwd=BASE.parent,
+                                  env=custom_env or env,capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,0,result.stderr)
+            return result.stdout.strip()
+
+        self.assertEqual(label(),'v0.1.0a2 · Git unavailable')
+        git('init','-q');git('config','user.name','Synthetic');git('config','user.email','test@example.invalid')
+        self.assertEqual(label(),'v0.1.0a2 · no commit')
+        (repo/'.gitignore').write_text('ignored\n')
+        (repo/'code.txt').write_text('original\n')
+        git('add','.');git('-c','commit.gpgsign=false','commit','-qm','Synthetic fixture')
+        head=git('rev-parse','--short=7','HEAD')
+        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        (repo/'ignored').write_text('ignored')
+        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        (repo/'code.txt').write_text('modified\n')
+        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        git('add','code.txt')
+        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        git('-c','commit.gpgsign=false','commit','-qm','Synthetic update')
+        head=git('rev-parse','--short=7','HEAD')
+        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        (repo/'new.txt').write_text('untracked')
+        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        nested=repo/'export';nested.mkdir()
+        self.assertEqual(label(nested),'v0.1.0a2 · Git unavailable')
+        self.assertEqual(label(custom_env={**env,'PATH':''}),'v0.1.0a2 · Git unavailable')
+
+        parent=self.root/'parent';parent.mkdir();subprocess.check_call(['git','-C',str(parent),'init','-q'])
+        child=parent/'child';child.mkdir()
+        self.assertEqual(label(child),'v0.1.0a2 · Git unavailable')
+
+    def test_git_version_refresh_and_narrow_views_show_the_full_public_label(self):
+        """A real PTY sees the refreshed dirty label on regular and immersive views."""
+        app=self.root/'app';(app/'hivemind').mkdir(parents=True)
+        for source in BASE.glob('*.py'):shutil.copy2(source,app/'hivemind'/source.name)
+        shutil.copytree(BASE/'integrations',app/'hivemind'/'integrations',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
+        (app/'.gitignore').write_text('__pycache__/\n*.pyc\n')
+        def git(*args):
+            return subprocess.check_output(['git','-C',str(app),*args],text=True,stderr=subprocess.PIPE).strip()
+        git('init','-q');git('add','.');git('-c','user.name=Synthetic','-c','user.email=test@example.invalid',
+            '-c','commit.gpgsign=false','commit','-qm','Synthetic fixture')
+        head=git('rev-parse','--short=7','HEAD')
+        code=('import sys;sys.path.insert(0,'+repr(str(app))+');'
+              'from hivemind.terminal_ui import run;raise SystemExit(run(sys.argv[1]))')
+        session=self.terminal('git-version',code)
+        session.expect(f'v0.1.0a2 · {head}')
+        self.assertNotIn('local changes',session.screen_text())
+        (app/'new.txt').write_text('Synthetic local change')
+        session.expect('v0.1.0a2 · '+head+' · local changes',timeout=13)
+        session.resize(54,17);session.drain(.3)
+        for tab in '12345':
+            session.send(tab);session.drain(.25)
+            screen=session.screen_text()
+            self.assertIn('v0.1.0a2 · '+head+' · local changes',screen,
+                          f'narrow regular/immersive label missing for tab {tab}')
+            (OUT/f'git-version-54x17-tab-{tab}.screen.txt').write_text(screen)
+        session.send('q');self.assertEqual(session.wait(),0)
+
     def test_real_pty_search_detail_sources_network_resize_and_quit(self):
         session=self.terminal('navigation')
         session.expect('OVERVIEW')
@@ -342,7 +413,7 @@ if __name__=='__main__':
     suite=(unittest.TestSuite([TerminalE2E(sys.argv[1])]) if len(sys.argv)>1 else unittest.defaultTestLoader.loadTestsFromTestCase(TerminalE2E))
     result=unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)
     log=stream.getvalue();(OUT/'test.log').write_text(log)
-    hashes={str(p.relative_to(BASE.parent)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [BASE/'terminal_ui.py',Path(__file__),BASE/'hive.py',BASE/'jobs.py',BASE/'integrations/ingest.py'] if p.exists()}
+    hashes={str(p.relative_to(BASE.parent)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [BASE/'terminal_ui.py',BASE/'hive_version.py',Path(__file__),BASE/'hive.py',BASE/'jobs.py',BASE/'integrations/ingest.py'] if p.exists()}
     evidence={'started_at':STAMP,'command':'python3 '+' '.join(sys.argv),'fixture':'synthetic journaled notes and project work, one selected local text source; no private data','environment':{'python':sys.version,'platform':sys.platform,'terminal':'xterm-256color','dimensions':['80x24','120x36','58x17']},'scope':'Real curses through POSIX PTYs. Sync and Calendar explicit-action adapters are doubles; no HTTP server, browser, model or provider call.','tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'success':result.wasSuccessful(),'source_sha256':hashes,'artifacts':[p.name for p in OUT.iterdir()]}
     (OUT/'evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
     print(log,end='');print('Evidence:',OUT/'evidence.json')

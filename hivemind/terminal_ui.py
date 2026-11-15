@@ -18,6 +18,10 @@ if __package__:
     from .runtime_paths import default_vault
 else:
     from runtime_paths import default_vault
+if __package__:
+    from .hive_version import VERSION, version_label
+else:
+    from hive_version import VERSION, version_label
 import queue
 import re
 import select
@@ -148,7 +152,7 @@ def _background(root):
 def snapshot(root):
     """One bounded, validated local refresh; never called from a paint method."""
     root=Path(root or default_vault()).resolve()
-    result={'root':str(root),'loaded_at':hive.now(),'notes':{},'inbox':[],
+    result={'root':str(root),'loaded_at':hive.now(),'app_version':version_label(),'notes':{},'inbox':[],
             'sources':[],'agenda':{'status':'unavailable','events':[]},
             'job':{'status':'idle'},'background':{},'errors':[],'valid':False}
     try:
@@ -375,7 +379,7 @@ def render_plain(root, width=80, data=None):
     data=snapshot(root) if data is None else data;width=max(30,min(int(width),160))
     notes=visible_notes(data);review=[n for n in notes.values() if hive.freshness(n)=='stale' or n['evidence']!='confirmed']
     pending=sum(not item.get('processed') for item in data['inbox'])
-    lines=['HIVEMIND / personal knowledge', '─'*width]
+    lines=[f"HIVEMIND {data.get('app_version', f'v{VERSION}')} / personal knowledge", '─'*width]
     if data['valid']:lines.append(f'{len(notes)} notes · {len(review)} to review · {pending} thoughts pending')
     lines.extend(['Background: '+_background_label(data),'Sync: '+STATUS.get(data['job'].get('status'),data['job'].get('status','unknown')),
                   'Calendar: '+STATUS.get(data['agenda'].get('status'),'unknown')+' · as of '+_when(data['agenda'].get('exported_at'))])
@@ -721,7 +725,8 @@ class Interface:
             # Full screen: the hints fade after a few quiet seconds and return with any key.
             quiet=now-self.last_key;fade=7 if quiet<4 else int(7*(1-(quiet-4)/1.5)) if quiet<5.5 else -1
             hints+='   m memories   1–5 views   q quit'+('   ·   '+self.notice if self.notice else '')
-            header=((heading,12,stats),(hints,fade) if fade>=0 else ('',0));top,left,rows,cols=start,0,bottom-start,width-1
+            label=self.data.get('app_version',f'v{VERSION}')
+            header=((f'HIVEMIND {label}',8),(heading,12,stats),(hints,fade) if fade>=0 else ('',0));top,left,rows,cols=start,0,bottom-start,width-1
         else:
             self.line(start,heading,self.accent)
             if stats:self.put(start,width-cells(stats)-3,stats,self.tone['mute'])
@@ -846,7 +851,7 @@ class Interface:
         if self.glow and self.glow.front is not None and not (self.tab==2 and not self.detail and not self.modal and self.data.get('valid') and height>=17 and width>=54):self.clear()
         self.screen.erase();self.items=[]
         if height<17 or width<54:
-            self.put(1,1,'HIVEMIND / Please enlarge the terminal.',self.accent)
+            self.put(1,1,f'HIVEMIND {self.data.get("app_version", f"v{VERSION}")} / Please enlarge the terminal.',self.accent)
             self.put(3,1,'At least 54 × 17. q closes this view.')
             self.screen.refresh();return
         if self.modal:self.draw_modal();self.screen.refresh();return
@@ -854,11 +859,14 @@ class Interface:
             self.view_network(1,height-1);self.present();return
         # Header: the mark, the background's state and the time.
         state,tone=_background_state(self.data);clock=dt.datetime.now().strftime('%d.%m.%Y  %H:%M' if width>=100 else '%H:%M')
-        self.write(1,3,[('HIVE','accent'),('MIND','ivory')])
+        label=self.data.get('app_version',f'v{VERSION}')
+        brand_end=self.write(1,3,[('HIVE','accent'),('MIND','ivory'),(' '+label,'mute')])
         status=[('● ',tone),('Background '+state,'soft'),('     '+clock,'mute')]
-        status_left=max(14,width-3-sum(cells(text) for text,_ in status))
-        if status_left>=40:self.put(1,14,'Your personal knowledge',self.tone['mute'])
-        self.write(1,status_left,status)
+        status_row=1
+        if width-3-sum(cells(text) for text,_ in status)<brand_end+3:status_row=2
+        status_left=max(3,width-3-sum(cells(text) for text,_ in status))
+        if status_row==1 and status_left>=brand_end+29:self.put(1,brand_end+3,'Your personal knowledge',self.tone['mute'])
+        self.write(status_row,status_left,status)
         x=3;pending=sum(not item.get('processed') for item in self.data.get('inbox',[]))
         underline=None
         tab_gap=4 if width>=70 else 1
