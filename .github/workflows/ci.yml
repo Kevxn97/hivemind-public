@@ -46,6 +46,7 @@ jobs:
           python scripts/verify.py --pattern test_portable_release_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_demo_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_memory_control_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
+          python scripts/verify.py --pattern test_dreaming_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_source_connections_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_quickstart_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"
           python scripts/verify.py --pattern test_easy_sources_e2e.py --evidence-dir "$RUNNER_TEMP/evidence/installed"

@@ -154,6 +154,7 @@ def main(argv=None):
     parser.add_argument('--history', action='store_true', help='Include the archive in search')
     parser.add_argument('--task', help='Task for project context selection')
     parser.add_argument('--budget', type=int, help='Total project context budget in words')
+    workflow_cli.dreaming.context_flags(parser)
     parser.add_argument('--detach', action='store_true', help='Start sync and return immediately')
     parser.add_argument('command', nargs='?', choices=['status','sync','sources','capture','search','note','neighbors','brief','graph','check','start','stop','calendar'])
     parser.add_argument('words', nargs='*')
@@ -200,7 +201,8 @@ def main(argv=None):
             display(neighbors(root,args.neighbors),args.json); return 0
         if args.brief is not None:
             target = args.brief or '.'
-            result = hive.brief(root,target,task=args.task,budget=args.budget)
+            result = hive.brief(root, target, task=args.task, budget=args.budget,
+                                corrections=workflow_cli.dreaming.request(args))
             if result is None: raise ValueError('No unique HiveMind project for '+str(Path(target).expanduser().resolve()))
             if args.json: display(result,True)
             else: print(result['text'],end='')

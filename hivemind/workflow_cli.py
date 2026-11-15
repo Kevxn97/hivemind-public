@@ -5,9 +5,10 @@ from pathlib import Path
 import sqlite3
 import sys
 if __package__:
-    from . import agent_contract
+    from . import agent_contract, dreaming
 else:
     import agent_contract
+    import dreaming
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -18,10 +19,11 @@ class ArgumentParser(argparse.ArgumentParser):
 COMMANDS = {'project-register', 'project-unregister', 'projects', 'session-open', 'session-context', 'session-draft',
             'session-close', 'session-status', 'why', 'impact', 'lessons',
             'changes', 'feedback', 'session-end', 'session-feedback', 'session-metrics', 'doctor', 'contract', 'evidence',
-            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'adopt'}
+            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'adopt', 'dreaming'}
 
 
 def configure(sub):
+    dreaming.configure(sub)
     p = sub.add_parser('adopt', help='Preview or journal an external edit to one existing Markdown note')
     p.add_argument('id')
     p.add_argument('--actor', required=True); p.add_argument('--reason', required=True)
@@ -58,11 +60,13 @@ def configure(sub):
     p.add_argument('--runtime-id'); p.add_argument('--runtime-source')
     p.add_argument('--view', choices=('compact', 'full'), default='compact')
     p.add_argument('--max-bytes', type=int)
+    dreaming.context_flags(p)
     p = sub.add_parser('session-context', help='Load task context for an existing session')
     p.add_argument('session_id'); p.add_argument('--task', default='')
     p.add_argument('--budget', type=int, default=1200)
     p.add_argument('--view', choices=('compact', 'full'), default='compact')
     p.add_argument('--max-bytes', type=int)
+    dreaming.context_flags(p)
     p = sub.add_parser('evidence', help='Read an exact note revision and specific evidence')
     p.add_argument('reference')
     selector = p.add_mutually_exclusive_group()
@@ -142,6 +146,8 @@ def _references(values):
 
 def _execute(args, root):
     command = args.command
+    if command == 'dreaming':
+        return dreaming.execute(args, root)
     if command == 'adopt':
         if __package__:
             from . import hive
@@ -194,7 +200,7 @@ def _execute(args, root):
             return sessions.open_session(root, args.target, agent=args.agent, task=args.task,
                                          budget=args.budget, session_id=args.session_id,
                                          runtime_id=args.runtime_id, runtime_source=args.runtime_source,
-                                         view=args.view, max_bytes=args.max_bytes)
+                                         view=args.view, max_bytes=args.max_bytes, corrections=dreaming.request(args))
         if command == 'session-end':
             return sessions.end_session(root, args.session_id, args.reason)
         if command == 'session-feedback':
@@ -204,7 +210,7 @@ def _execute(args, root):
             return sessions.metrics(root, args.cluster)
         if command == 'session-context':
             return sessions.session_context(root, args.session_id, task=args.task, budget=args.budget,
-                                            view=args.view, max_bytes=args.max_bytes)
+                                            view=args.view, max_bytes=args.max_bytes, corrections=dreaming.request(args))
         if command == 'session-draft':
             value = sessions.draft_handoff(root, args.session_id, note_id=args.note)
             # A prepared draft never silently replaces another agent's work.

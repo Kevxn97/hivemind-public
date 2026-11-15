@@ -20,7 +20,7 @@ else:
     import work_items
 
 
-def build(root, target, task, budget, previous_at=None):
+def build(root, target, task, budget, previous_at=None, corrections=None):
     root = Path(root).resolve()
     if isinstance(budget, bool) or not isinstance(budget, int) or not 120 <= budget <= 2000:
         raise ValueError('Context budget must be 120..2000 words')
@@ -84,7 +84,8 @@ def build(root, target, task, budget, previous_at=None):
             break
         extra.append(line)
         used += size
-    context = project_context.task_brief(root, target, task=task, budget=budget - used, include_blocks=True)
+    context = project_context.task_brief(root, target, task=task, budget=budget - used, include_blocks=True,
+                                         corrections=corrections)
     if context['selected'][0]['revision'] != hive.digest(raw):
         raise ValueError('Project changed while preparing context; retry session-open/session-context')
     text = context['text'] + ('\n' + '\n\n'.join(extra) + '\n' if extra else '')

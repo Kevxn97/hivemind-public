@@ -15,6 +15,13 @@
     "refs": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["ref", "title", "evidence", "freshness"],
       "properties": {"ref": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*@[a-f0-9]{64}$"}, "title": {"type": "string"}, "evidence": {"enum": ["confirmed", "reported", "inferred", "disputed"]}, "freshness": {"enum": ["stale", "within_review_window"]}}}},
     "offered": {"type": "array"}, "omitted": {"type": "object"}, "next_commands": {"type": "array", "items": {"type": "string"}},
+    "dreaming": {
+      "type": "object",
+      "required": ["offered_rule_ids"],
+      "properties": {"offered_rule_ids": {"type": "array", "minItems": 1, "maxItems": 1,
+        "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,79}$"}}},
+      "additionalProperties": false
+    },
     "notice": {"type": "string"}, "budget": {"type": "object", "required": ["max_bytes", "bytes", "unit"],
       "properties": {"max_bytes": {"type": "integer", "minimum": 4096, "maximum": 65536}, "bytes": {"type": "integer", "maximum": 65536}, "unit": {"type": "string"}}}
   },

@@ -29,11 +29,12 @@ def main():
     out = args.evidence_dir.expanduser().resolve() / started.strftime('%Y%m%dT%H%M%S%fZ')
     out.mkdir(parents=True)
     unittest = [sys.executable, '-B', '-m', 'unittest']
+    # Hundreds of subprocess-based fixtures can exceed four minutes on hosted runners.
     checks = [{'command': [*unittest, 'discover', '-s', 'tests', '-p', args.pattern or 'test*.py', '-v'],
-               'log': 'test.log', 'outcome': 'pending'}]
+               'log': 'test.log', 'outcome': 'pending', 'timeout_seconds': 240 if args.pattern else 480}]
     if args.pattern is None:
         checks.append({'command': [*unittest, '-v', *STANDALONE_SUITES],
-                       'log': 'standalone.log', 'outcome': 'pending'})
+                       'log': 'standalone.log', 'outcome': 'pending', 'timeout_seconds': 240})
     files = [path for path in ROOT.rglob('*') if path.is_file() and not
              any(part in {'.git', '__pycache__', '.venv', 'output', 'dist', 'build'} or part.endswith('.egg-info') for part in path.relative_to(ROOT).parts)]
     report = {'checks': checks, 'cwd': str(ROOT), 'outcome': 'running', 'started_at': started.isoformat(),
@@ -58,7 +59,7 @@ def main():
                 with subprocess.Popen(check['command'], cwd=ROOT, stdout=log,
                                       stderr=subprocess.STDOUT, env=env) as process:
                     try:
-                        status = process.wait(timeout=240)
+                        status = process.wait(timeout=check['timeout_seconds'])
                     except BaseException:
                         process.terminate()
                         try:

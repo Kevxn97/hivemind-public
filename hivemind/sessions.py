@@ -143,12 +143,13 @@ def _response(session, context, workflow, view, max_bytes):
             'context': {k: v for k, v in context.items() if not k.startswith('_')}, 'workflow': workflow}
 
 
-def _refresh(root, session, task, budget, source=None, view='full', max_bytes=None):
+def _refresh(root, session, task, budget, source=None, view='full', max_bytes=None, corrections=None):
     if __package__:
         from .session_context import build
     else:
         from session_context import build
-    context, workflow = build(root, session['cluster'], task, budget, session.get('previous_context_at'))
+    context, workflow = build(root, session['cluster'], task, budget, session.get('previous_context_at'),
+                              corrections=corrections)
     session['refreshed_at'] = _now()
     if source is not None:
         session['runtime']['last_source'] = source
@@ -176,7 +177,7 @@ def _runtime_records(root, agent, runtime_id):
 
 
 def open_session(root, target=".", agent="codex", task="", budget=1200, session_id=None,
-                 runtime_id=None, runtime_source=None, view='full', max_bytes=None):
+                 runtime_id=None, runtime_source=None, view='full', max_bytes=None, corrections=None):
     """Offer bounded project context and return an attributable session ID."""
     if __package__:
         from .project_context import resolve_project
@@ -210,11 +211,12 @@ def open_session(root, target=".", agent="codex", task="", budget=1200, session_
             if len(active) > 1:
                 raise AgentError('INVALID_STATE', 'Multiple open receipts for this runtime and project; inspect session-status')
             if active:
-                return _refresh(root, active[0], task, budget, runtime_source, view, max_bytes)
+                return _refresh(root, active[0], task, budget, runtime_source, view, max_bytes, corrections)
         if _session_path(root, ident).exists():
             raise AgentError('SESSION_EXISTS', "Session already exists; inspect session-status or open a new session")
         previous = context_baseline(root, route["cluster"])
-        context, workflow = build(root, target, task, budget, previous['at'] if previous else None)
+        context, workflow = build(root, target, task, budget, previous['at'] if previous else None,
+                                  corrections=corrections)
         value = {"schema_version": 1, "session_id": ident, "agent": agent,
                  "cluster": context["cluster"], "status": "context_offered",
                  "opened_at": _now(), "previous_context_at": previous["at"] if previous else None,
@@ -229,7 +231,7 @@ def open_session(root, target=".", agent="codex", task="", budget=1200, session_
     return result
 
 
-def session_context(root, session_id, task='', budget=1200, view='full', max_bytes=None):
+def session_context(root, session_id, task='', budget=1200, view='full', max_bytes=None, corrections=None):
     """Refresh an active session for its actual task without a second receipt."""
     root = Path(root).resolve()
     _view(view, max_bytes)
@@ -237,7 +239,7 @@ def session_context(root, session_id, task='', budget=1200, view='full', max_byt
         session = _read(root, session_id)
         if session['status'] != 'context_offered':
             raise AgentError('SESSION_CLOSED', 'Session is already closed; open a new session')
-        return _refresh(root, session, task, budget, view=view, max_bytes=max_bytes)
+        return _refresh(root, session, task, budget, view=view, max_bytes=max_bytes, corrections=corrections)
 
 
 def _mark_ended(root, session, reason):
