@@ -11,8 +11,9 @@ from pathlib import Path
 import re
 
 if __package__:
-    from . import hive
+    from . import dreaming, hive
 else:
+    import dreaming
     import hive
 
 
@@ -315,7 +316,7 @@ def _session_metadata(item, scope):
     return f"## {_short(item['title'], 10)} [{item['id']}]\n" + ' · '.join(parts)
 
 
-def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
+def task_brief(root, target='.', task='', budget=1200, include_blocks=False, corrections=None):
     """Select context for a task. Unknown folders return None; no model is called."""
     if isinstance(budget, bool) or not isinstance(budget, int) or not MIN_BUDGET <= budget <= MAX_BUDGET:
         raise ValueError(f'Context budget must be {MIN_BUDGET}..{MAX_BUDGET} words')
@@ -328,6 +329,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
     if route is None:
         return None
     scope = route['cluster']
+    rule = dreaming.select(root, scope, records, corrections)
     members = sorted((n for n in notes.values() if _visible(n) and hive.cluster_for(n) == scope),
                      key=lambda n: (n['type'] != 'project', n['id'] != scope.split('/')[-1], n['id']))
     lead = members[0]
@@ -376,6 +378,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
               'Stored context, not live status. Confirmation applies only within its documented scope. Sources apply to notes; see `hive note ID` for details.')
     blocks, selected, reading_blocks = [], [], []
     remaining = budget - len(header.split()) - len(footer.split())
+    delivered_rule = None
     for index, (n, reason) in enumerate(candidates):
         item = _provenance(n, records[n['id']][1], reason)
         item['matched_terms'] = hits.get(n['id'], {}).get('matched_terms', [])
@@ -398,6 +401,12 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
         reading_blocks.append({'ref': item['id'] + '@' + item['revision'], 'metadata': meta,
                                'paragraphs': body.split('\n\n')})
         remaining -= len(block.split())
+        if index == 0 and rule:
+            words = len(rule['text'].split())
+            if words <= min(remaining, budget - MIN_BUDGET):
+                blocks.append(rule['text'])
+                remaining -= words
+                delivered_rule = rule
     no_match = bool(task.strip()) and not any(i['matched_terms'] for i in selected)
     if no_match:
         notice = 'No matching task evidence found; project overview only.'
@@ -406,4 +415,6 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False):
     text = '\n\n'.join([header, *blocks, footer]) + '\n'
     return {**route, 'task': task, 'budget': budget, 'word_count': len(text.split()),
             'text': text, 'selected': selected, 'task_match': not no_match if task.strip() else None,
-            **({'_reading_blocks': reading_blocks} if include_blocks else {})}
+            **({'dreaming': {'offered_rule_ids': [delivered_rule['id']]}} if delivered_rule else {}),
+            **({'_reading_blocks': reading_blocks} if include_blocks else {}),
+            **({'_dreaming_rule': delivered_rule} if include_blocks and delivered_rule else {})}

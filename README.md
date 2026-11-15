@@ -186,6 +186,10 @@ of the whole vault, including `.history`.
 
 ## Optional automation
 
+Dreaming can surface an explicitly approved hint when two distinct, confirmed
+corrections support it and the task matches. It starts off in every vault and
+uses local evidence. See [Dreaming for repeated corrections](docs/DREAMING.md).
+
 Run `hive automation` or press **b** in the terminal if you want to set up
 selected sources, a Codex profile, background startup, or a weekly knowledge
 review. Each feature starts **off** and can be enabled or disabled separately.

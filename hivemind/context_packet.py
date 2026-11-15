@@ -75,6 +75,10 @@ def compact(receipt, context, workflow, maximum=None):
     for ref, group in groups.items():
         if group['paragraphs']:
             blocks.append((ref, group['paragraphs'][0]))
+    rule = context.get('_dreaming_rule')
+    rule_block = (None, rule['text']) if rule and blocks else None
+    if rule_block is not None:
+        blocks.insert(1, rule_block)
     if context.get('task_match') is False:
         blocks.append((None, 'No matching task evidence found.'))
     blocks.extend((None, paragraph) for paragraph in context['_supplement'])
@@ -96,16 +100,25 @@ def compact(receipt, context, workflow, maximum=None):
 
     accepted = []
     for block in blocks:
+        if block is rule_block:
+            if not accepted:
+                result['omitted']['text_blocks'] += 1
+                continue
+            result['dreaming'] = {'offered_rule_ids': [rule['id']]}
         candidate = render([*accepted, block])
         result['context'].update(text=candidate, word_count=len(candidate.split()))
         if len(candidate.split()) <= context['budget'] and measure(result) <= maximum:
             accepted.append(block)
         else:
+            if block is rule_block:
+                result.pop('dreaming')
             result['omitted']['text_blocks'] += 1
     result['context'].update(text=render(accepted), word_count=len(render(accepted).split()))
     # Counter growth can cost a byte at a decimal boundary; drop whole blocks.
     while measure(result) > maximum and accepted:
-        accepted.pop(); result['omitted']['text_blocks'] += 1
+        if accepted.pop() is rule_block:
+            result.pop('dreaming')
+        result['omitted']['text_blocks'] += 1
         result['context'].update(text=render(accepted), word_count=len(render(accepted).split()))
     if context.get('task_match') is not None:
         shown = {ref for ref, _ in accepted}

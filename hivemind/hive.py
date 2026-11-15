@@ -959,14 +959,15 @@ def excerpt(body, words):
     return "\n\n".join(kept), omitted + waiting
 
 
-def brief(root, target=".", words=170, *, task=None, budget=None):
+def brief(root, target=".", words=170, *, task=None, budget=None, corrections=None):
     """Markdown context for a project folder or projects/<id>; None when no unique project applies."""
     if __package__:
         from . import project_context
     else:
         import project_context
-    if task is not None or budget is not None:
-        return project_context.task_brief(root, target, task=task or "", budget=1200 if budget is None else budget)
+    if task is not None or budget is not None or corrections is not None:
+        return project_context.task_brief(root, target, task=task or "", budget=1200 if budget is None else budget,
+                                          corrections=corrections)
     resolved = project_context.resolve_project(root, target)
     if resolved is None:
         return None
@@ -1124,6 +1125,7 @@ def main(argv=None):
     p = sub.add_parser("search"); p.add_argument("query"); p.add_argument("--limit", type=int, choices=range(1, 21), default=5); p.add_argument("--history", action="store_true"); p.add_argument("--cluster")
     p = sub.add_parser("browse"); p.add_argument("cluster", nargs="?"); p.add_argument("--limit", type=int, choices=range(1, 21), default=10); p.add_argument("--history", action="store_true")
     p = sub.add_parser("brief"); p.add_argument("target", nargs="?", default="."); p.add_argument("--hook", action="store_true"); p.add_argument("--task"); p.add_argument("--budget", type=int); p.add_argument('--agent', choices=('codex', 'claude'), default='claude')
+    workflow_cli.dreaming.context_flags(p)
     p = sub.add_parser("eval"); p.add_argument("--cases", type=Path, required=True)
     for cmd in ("show", "neighbors", "history"):
         sub.add_parser(cmd).add_argument("id")
@@ -1150,9 +1152,12 @@ def main(argv=None):
         elif args.command == "browse":
             result = browse(root, args.cluster, args.limit, args.history)
         elif args.command == "brief":
+            corrections = workflow_cli.dreaming.request(args)
             if args.hook:
+                if corrections is not None:
+                    raise ValueError('Dreaming flags require an explicit project brief or session')
                 return session_hook(root, agent=args.agent, budget=args.budget if args.budget is not None else 1200)
-            result = brief(root, args.target, task=args.task, budget=args.budget)
+            result = brief(root, args.target, task=args.task, budget=args.budget, corrections=corrections)
             if result is None:
                 raise ValueError("No unique HiveMind project for this folder: " + args.target)
         elif args.command == "apply":
