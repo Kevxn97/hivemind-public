@@ -29,9 +29,9 @@ def main():
     out = args.evidence_dir.expanduser().resolve() / started.strftime('%Y%m%dT%H%M%S%fZ')
     out.mkdir(parents=True)
     unittest = [sys.executable, '-B', '-m', 'unittest']
-    # Hundreds of subprocess-based fixtures can exceed four minutes on hosted runners.
+    # Allow slower hosted runners to finish discovery; individual subprocess checks keep their own deadlines.
     checks = [{'command': [*unittest, 'discover', '-s', 'tests', '-p', args.pattern or 'test*.py', '-v'],
-               'log': 'test.log', 'outcome': 'pending', 'timeout_seconds': 240 if args.pattern else 480}]
+               'log': 'test.log', 'outcome': 'pending', 'timeout_seconds': 240 if args.pattern else 720}]
     if args.pattern is None:
         checks.append({'command': [*unittest, '-v', *STANDALONE_SUITES],
                        'log': 'standalone.log', 'outcome': 'pending', 'timeout_seconds': 240})

@@ -12,7 +12,7 @@ jobs:
   verify:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      - name: Precompile the application for source subprocess tests
+        run: python -m compileall -q --invalidation-mode timestamp hivemind
       - name: Source regression and standalone suites
         run: python scripts/verify.py --evidence-dir "$RUNNER_TEMP/evidence/source"
       - name: Reviewed source archive
