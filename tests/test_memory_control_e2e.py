@@ -94,6 +94,84 @@ class MemoryControlE2E(unittest.TestCase):
         self.assertNotEqual(wrong['event'], corrected['event'])
         self.assertTrue(self.cli('check')['valid'])
 
+    def corrected_retry_decision(self):
+        created = self.cli('remember', 'Retry failed imports three times.', '--type', 'decision', '--yes')
+        ident = created['note']['id']
+        original = self.memory('show', ident)
+        (self.vault / 'sources').mkdir(exist_ok=True)
+        (self.vault / 'sources' / 'retry-review.md').write_text('The synthetic project chose five retries.')
+        self.mutate('edit', ident, '--summary', 'Retry failed imports five times.',
+                    '--body', '# Import retries\n\nRetry failed imports five times.',
+                    '--source', 'sources/retry-review.md', '--reason', 'Correct the retry count')
+        corrected = self.memory('show', ident)
+        return ident, original, corrected
+
+    def test_correction_check_exposes_offered_revision_and_records_explicit_review(self):
+        ident, _, note = self.corrected_retry_decision()
+        reference = ident + '@' + note['revision']
+        source = note['note']['sources'][0]['id']
+        question = 'How often should we retry failed imports?'
+        check = self.memory('check', 'add', reference, '--question', question, '--agent', 'claude')['check']
+        check_id = check['id']
+        self.assertEqual((check['ref'], check['source_id'], check['question']), (reference, source, question))
+
+        opened = self.cli('session-open', str(self.project), '--agent', 'claude')
+        self.assertIn(source, opened['context']['text'])
+        session_id = opened['session_id']
+        self.cli('session-context', session_id, '--task', question)
+        run, = self.memory('check', 'show', check_id)['runs']
+        self.assertEqual(run['session_id'], session_id)
+        for phase in ('startup', 'question_context'):
+            offer = run[phase]
+            self.assertEqual((offer['status'], offer['observed_ref'], offer['source_id']),
+                             ('offered', reference, source))
+        self.assertIsNone(run['review'])
+        self.memory('check', 'review', check_id, '--session', session_id, '--used', 'no', '--corrected-again', 'yes')
+        reviewed, = self.memory('check', 'show', check_id)['runs']
+        self.assertIs(reviewed['review']['used'], False)
+        self.assertIs(reviewed['review']['corrected_again'], True)
+        self.assertFalse(self.memory('check', 'stop', check_id)['check']['active'])
+        self.cli('session-open', str(self.project), '--agent', 'claude')
+        self.assertEqual(self.memory('check', 'show', check_id)['runs'], [reviewed])
+
+    def test_correction_check_scopes_runs_and_detects_a_superseded_revision(self):
+        ident, original, corrected = self.corrected_retry_decision()
+        question = 'How often should we retry failed imports?'
+        settings = ['--question', question, '--agent', 'codex']
+        lead = self.memory('show', 'demo')
+        self.memory('check', 'add', 'demo@' + lead['revision'], *settings, ok=False)
+        self.memory('check', 'add', ident + '@' + original['revision'], *settings, ok=False)
+        old_session = self.cli('session-open', str(self.project), '--agent', 'codex')['session_id']
+        check = self.memory('check', 'add', ident + '@' + corrected['revision'], *settings)['check']
+        self.cli('session-context', old_session, '--task', question)
+        self.cli('session-open', str(self.project), '--agent', 'claude', '--task', question)
+        self.cli('session-open', str(self.project), '--agent', 'codex', '--task', 'Document a different issue')
+        self.assertEqual(self.memory('check', 'show', check['id'])['runs'], [])
+
+        self.mutate('edit', ident, '--summary', 'Retry failed imports seven times.',
+                    '--body', '# Import retries\n\nRetry failed imports seven times.',
+                    '--source', 'user:updated-retry-policy', '--reason', 'Replace the five-retry decision')
+        current = self.memory('show', ident)
+        fresh = self.cli('session-open', str(self.project), '--agent', 'codex', '--task', question)
+        run, = self.memory('check', 'show', check['id'])['runs']
+        self.assertEqual(run['session_id'], fresh['session_id'])
+        self.assertEqual(run['startup']['status'], 'different_revision')
+        self.assertEqual(run['startup']['observed_ref'], ident + '@' + current['revision'])
+        self.assertIsNone(run['review'])
+
+    def test_memory_menu_can_cancel_or_save_a_check_after_showing_its_source(self):
+        ident, _, note = self.corrected_retry_decision()
+        question = 'What is the import retry count?'
+        path = f'9\na\n{ident}\n{question}\nclaude\n'
+        cancelled = self.terminal(['memory'], [(b'Choice > ', (path + 'n\nq\nq\n').encode())])
+        self.assertIn(ident + '@' + note['revision'], cancelled)
+        self.assertIn('sources/retry-review.md', cancelled)
+        self.assertIn('Save this check?', cancelled)
+        self.assertEqual(self.memory('check', 'list')['checks'], [])
+        self.terminal(['memory'], [(b'Choice > ', (path + 'y\nq\nq\n').encode())])
+        check, = self.memory('check', 'list')['checks']
+        self.assertEqual((check['question'], check['agent']), (question, 'claude'))
+
     def test_preview_required_stale_rejected_archive_and_compensating_undo(self):
         args = ('edit', 'demo', '--summary', 'New decision.', '--body', '# Corrected decision\n\nUse CorrectDB.',
                 '--source', 'user:review', '--reason', 'Correct false decision')

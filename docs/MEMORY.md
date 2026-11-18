@@ -48,6 +48,42 @@ Corrections attach a labelled source and carry `reported` evidence. Earlier
 sources and every earlier note revision remain in the canonical journal.
 A fresh agent session receives the corrected active content.
 
+## Check a correction in the next session
+
+To follow a correction, open `hive memory`, choose **9 Correction checks**, then
+**a Add**. Enter the ID of a project memory you corrected with `memory edit`.
+Review its exact revision and source, enter a typical follow-up question, and
+choose Codex or Claude. Confirm to start the check. You can also use the CLI
+with the revision from `hive memory show NOTE_ID`.
+
+```sh
+hive memory check add NOTE_ID@REVISION --agent claude \
+  --question "How many times should the importer retry?"
+hive memory check list
+hive memory check show CHECK_ID
+```
+
+Open a fresh session for the chosen agent in the same project and ask your
+saved question. HiveMind records the revision and source label in the startup
+context it offered. If the agent refreshes the context for that question, the
+check records the result separately. A startup with an unrelated explicit task
+is skipped. A matching question ignores capitalization and extra whitespace.
+Saving a check does not change which memories are selected for the agent.
+
+Use **s Show** to find the session ID. After reading the actual answer, choose
+**r Review answer** to record whether the agent used the correction and whether
+you had to correct it again. You can leave the review pending. HiveMind does
+not read conversations or infer either answer from delivery.
+
+```sh
+hive memory check review CHECK_ID --session SESSION_ID --used yes --corrected-again no
+hive memory check stop CHECK_ID
+```
+
+The check keeps its expected revision when the note changes again. Its report
+shows the revision and source that actually appeared, including a missing
+offer. Stopping a check keeps its existing observations in your local vault.
+
 ## Archive and undo
 
 ```sh

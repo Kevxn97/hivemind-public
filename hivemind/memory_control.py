@@ -39,6 +39,22 @@ def configure(sub):
     pause = commands.add_parser('pause', help='Pause incoming agent/source knowledge writes')
     resume = commands.add_parser('resume', help='Resume incoming knowledge writes')
     commands.add_parser('status', help='Inspect incoming knowledge processing state')
+    checks = commands.add_parser('check', help='Follow a corrected decision into a new agent session')
+    check_actions = checks.add_subparsers(dest='check_command', required=True)
+    add = check_actions.add_parser('add', help='Save the expected revision, question and target agent')
+    add.add_argument('reference', metavar='NOTE_ID@REVISION')
+    add.add_argument('--question', required=True, help='Typical follow-up question')
+    add.add_argument('--agent', choices=('codex', 'claude'), required=True)
+    check_actions.add_parser('list', help='List saved correction checks')
+    inspect = check_actions.add_parser('show', help='Show offered context and recorded user reviews')
+    inspect.add_argument('check_id')
+    review = check_actions.add_parser('review', help='Record your review of one answer')
+    review.add_argument('check_id')
+    review.add_argument('--session', required=True, metavar='SESSION_ID')
+    review.add_argument('--used', choices=('yes', 'no'), required=True)
+    review.add_argument('--corrected-again', choices=('yes', 'no'), required=True)
+    stop = check_actions.add_parser('stop', help='Stop collecting observations and keep past results')
+    stop.add_argument('check_id')
     for mutation in (edit, archive, undo, pause, resume):
         mutation.add_argument('--actor', default='user/memory')
         mutation.add_argument('--reason', required=True)
@@ -224,11 +240,34 @@ def _mutation(root, records, events, args):
     return result
 
 
+def _checks_module():
+    if __package__:
+        from . import correction_checks
+    else:
+        import correction_checks
+    return correction_checks
+
+
+def _check_action(root, args):
+    checks = _checks_module()
+    if args.check_command == 'add':
+        return checks.add(root, args.reference, args.question, args.agent)
+    if args.check_command == 'list':
+        return checks.list_checks(root)
+    if args.check_command == 'show':
+        return checks.show(root, args.check_id)
+    if args.check_command == 'review':
+        return checks.review(root, args.check_id, args.session, args.used == 'yes', args.corrected_again == 'yes')
+    return checks.stop(root, args.check_id)
+
+
 def execute(args, root):
     root = Path(root)
     command = args.memory_command
     if command is None and sys.stdin.isatty() and sys.stdout.isatty() and not getattr(args, 'json', False):
         return interactive(root)
+    if command == 'check':
+        return _check_action(root, args)
     if command == 'status':
         state = automation.status(root)
         return {**state, 'text': 'Incoming processing ' + ('paused.' if state['paused'] else 'active.')}
@@ -242,17 +281,89 @@ def execute(args, root):
     return _mutation(root, records, events, args)
 
 
+def _confirm(prompt):
+    return input(prompt + ' [y/N] > ').strip().lower() in {'yes', 'y', 'ja'}
+
+
+def _check_add_form(root, checks):
+    ident = input('Corrected memory ID > ').strip()
+    if not ident:
+        return
+    records, _ = _snapshot(root)
+    note, raw, _ = _record(records, ident)
+    if not note['sources'] or not note['sources'][0]['id'].startswith('correction-'):
+        raise ValueError('Choose a memory corrected with memory edit.')
+    source = note['sources'][0]
+    reference = ident + '@' + hive.digest(raw)
+    print(_safe(reference + '\n' + note['summary'] + '\nSource ' + source['id'] + ' · ' + source['resource']))
+    question = input('Typical follow-up question > ').strip()
+    if not question:
+        return
+    agent = input('Target agent [codex/claude] > ').strip().lower()
+    if not agent:
+        return
+    if agent not in {'codex', 'claude'}:
+        raise ValueError('Choose codex or claude.')
+    print(_safe('Question for ' + agent + ' · ' + question))
+    if _confirm('Save this check?'):
+        print(_safe(checks.add(root, reference, question, agent)['text']))
+
+
+def _check_review_form(root, checks, check_id):
+    session = input('Session ID from the check > ').strip()
+    if not session:
+        return
+    answers = []
+    for prompt in ('Did the answer use the correction?', 'Did you have to correct it again?'):
+        value = input(prompt + ' [yes/no, Enter to cancel] > ').strip().lower()
+        if not value:
+            return
+        if value not in {'yes', 'y', 'no', 'n'}:
+            raise ValueError('Choose yes or no.')
+        answers.append(value in {'yes', 'y'})
+    if _confirm('Save your review?'):
+        print(_safe(checks.review(root, check_id, session, *answers)['text']))
+
+
+def _checks_menu(root):
+    checks = _checks_module()
+    while True:
+        print('\nCorrection checks · l List  a Add  s Show  r Review answer  x Stop  q Back')
+        choice = input('Choice > ').strip().lower()
+        if choice in {'q', ''}:
+            return
+        try:
+            if choice == 'l':
+                print(_safe(checks.list_checks(root)['text']))
+            elif choice == 'a':
+                _check_add_form(root, checks)
+            elif choice in {'s', 'r', 'x'}:
+                check_id = input('Check ID > ').strip()
+                if not check_id:
+                    continue
+                print(_safe(checks.show(root, check_id)['text']))
+                if choice == 'r':
+                    _check_review_form(root, checks, check_id)
+                elif choice == 'x' and _confirm('Stop checking new sessions?'):
+                    print(_safe(checks.stop(root, check_id)['text']))
+        except (ValueError, OSError, RuntimeError) as exc:
+            print(_safe(str(exc)))
+
+
 def interactive(root):
     """A small terminal menu using the same revision-bound command operations."""
     parser = argparse.ArgumentParser(prog='hive')
     configure(parser.add_subparsers(dest='command', required=True))
     print('HiveMind · Manage memories')
     while True:
-        print('\n1 Memories  2 Show  3 Correct  4 Archive  5 Undo\n6 Pause  7 Resume  8 Status  q Back')
+        print('\n1 Memories  2 Show  3 Correct  4 Archive  5 Undo\n6 Pause  7 Resume  8 Status  9 Correction checks  q Back')
         choice = input('Choice > ').strip().lower()
         if choice in {'q', ''}:
             return {'status': 'closed', 'text': 'Memory management closed.'}
         commands = {'1': 'list', '2': 'show', '3': 'edit', '4': 'archive', '5': 'undo', '6': 'pause', '7': 'resume', '8': 'status'}
+        if choice == '9':
+            _checks_menu(root)
+            continue
         if choice not in commands:
             continue
         command = commands[choice]
@@ -277,7 +388,7 @@ def interactive(root):
             args = parser.parse_args(arguments)
             result = execute(args, root)
             print(result['text'])
-            if result.get('status') == 'preview' and input('Apply? [y/N] > ').strip().lower() in {'y', 'yes', 'ja'}:
+            if result.get('status') == 'preview' and _confirm('Apply?'):
                 args.apply = True
                 args.preview = result['preview']
                 print(execute(args, root)['text'])
