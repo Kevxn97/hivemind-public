@@ -65,8 +65,9 @@ hive memory check show CHECK_ID
 
 Open a fresh session for the chosen agent in the same project and ask your
 saved question. HiveMind records the revision and source label in the startup
-context it offered. If the agent refreshes the context for that question, the
-check records the result separately. A startup with an unrelated explicit task
+context it offered. The most recent matching context request before your review
+is shown separately. Saving your review fixes both observations for that session.
+A startup with an unrelated explicit task
 is skipped. A matching question ignores capitalization and extra whitespace.
 Saving a check does not change which memories are selected for the agent.
 

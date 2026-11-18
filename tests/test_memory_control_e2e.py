@@ -159,6 +159,29 @@ class MemoryControlE2E(unittest.TestCase):
         self.assertEqual(run['startup']['observed_ref'], ident + '@' + current['revision'])
         self.assertIsNone(run['review'])
 
+    def test_review_uses_the_last_matching_offer_and_preserves_startup(self):
+        ident, _, corrected = self.corrected_retry_decision()
+        question = 'What is the import retry count?'
+        ref = ident + '@' + corrected['revision']
+        check_id = self.memory('check', 'add', ref, '--question', question, '--agent', 'claude')['check']['id']
+        session = self.cli('session-open', str(self.project), '--agent', 'claude', '--task', question)['session_id']
+        edited = self.mutate('edit', ident, '--summary', 'Use seven import retries.',
+                             '--body', '# Import retries\n\nUse seven import retries.',
+                             '--source', 'user:revised-policy', '--reason', 'Update the retry policy')
+        current = self.memory('show', ident)
+        self.cli('session-context', session, '--task', question.upper())
+        latest, = self.memory('check', 'show', check_id)['runs']
+        self.assertEqual(latest['startup']['observed_ref'], ref)
+        self.assertEqual(latest['question_context']['status'], 'different_revision')
+        self.assertEqual(latest['question_context']['observed_ref'], ident + '@' + current['revision'])
+        self.assertEqual(latest['question_context']['source_id'], current['note']['sources'][0]['id'])
+
+        self.memory('check', 'review', check_id, '--session', session, '--used', 'no', '--corrected-again', 'yes')
+        frozen, = self.memory('check', 'show', check_id)['runs']
+        self.mutate('undo', edited['event'], '--reason', 'Return to the earlier retry policy')
+        self.cli('session-context', session, '--task', question)
+        self.assertEqual(self.memory('check', 'show', check_id)['runs'], [frozen])
+
     def test_memory_menu_can_cancel_or_save_a_check_after_showing_its_source(self):
         ident, _, note = self.corrected_retry_decision()
         question = 'What is the import retry count?'

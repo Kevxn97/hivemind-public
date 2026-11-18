@@ -151,7 +151,7 @@ def show(root, ident):
              f"Inspect with hive evidence {check['ref']} --source {check['source_id']}"]
     for run in runs:
         lines.append(f"Session {run['session_id']} · {run['opened_at']}")
-        for field, label in (('startup', 'Startup'), ('question_context', 'Follow-up question')):
+        for field, label in (('startup', 'Startup'), ('question_context', 'Latest matching follow-up')):
             observed = run[field]
             if observed:
                 lines.append(f"  {label}: {observed['status']} · {observed['observed_ref'] or '—'} · source {observed['source_id'] or '—'}")
@@ -215,7 +215,7 @@ def observe(root, session, task, stage, blocks, rendered):
             fields = []
             if stage == 'startup' and run['startup'] is None:
                 fields.append('startup')
-            if matches and run['question_context'] is None:
+            if matches and run['question_context'] != observed:
                 fields.append('question_context')
             if fields and run['review'] is None:
                 for field in fields:
