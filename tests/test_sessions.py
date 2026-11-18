@@ -44,6 +44,37 @@ class SessionsTest(unittest.TestCase):
         value["source"].update(resource="test:handoff/" + str(number), title="Synthetic task decision", observed_at="2026-10-29T12:00:00Z")
         return value
 
+    def test_correction_checks_count_only_note_blocks_that_fit_in_the_final_packet(self):
+        from context_packet import compact
+        from session_context import build
+
+        opened = self.open()
+        context, workflow = build(self.root, 'projects/demo', '', 500)
+        block = context['_reading_blocks'][0]
+        block['paragraphs'] = ['x' * 8000]
+        rendered = set()
+        packet = compact(opened, context, workflow, 4096, rendered_refs=rendered)
+        self.assertIn(block['ref'], [row['ref'] for row in packet['refs']])
+        self.assertNotIn(block['metadata'], packet['context']['text'])
+        self.assertEqual(rendered, set())
+
+        block['paragraphs'] = ['Use the corrected retry count.']
+        packet = compact(opened, context, workflow, 4096, rendered_refs=rendered)
+        self.assertIn(block['metadata'], packet['context']['text'])
+        self.assertEqual(rendered, {block['ref']})
+
+    def test_damaged_optional_check_state_leaves_ordinary_context_available(self):
+        from correction_checks import list_checks
+
+        path = self.root / '.state/correction-checks/index.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('incomplete')
+        opened = self.open()
+        self.assertIn('bounded API retries', opened['context']['text'])
+        self.assertEqual(path.read_text(), 'incomplete')
+        with self.assertRaises(ValueError):
+            list_checks(self.root)
+
     def test_ten_alternating_agent_handoffs_retrieve_the_latest_decision(self):
         for number in range(1, 11):
             agent = "codex" if number % 2 else "claude"

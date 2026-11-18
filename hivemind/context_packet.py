@@ -36,7 +36,7 @@ def finish(value, maximum):
     return value
 
 
-def compact(receipt, context, workflow, maximum=None):
+def compact(receipt, context, workflow, maximum=None, *, rendered_refs=None):
     maximum = byte_limit(maximum)
     selected = context['selected']
     candidates = {r['id'] + '@' + r['revision']: r for r in selected}
@@ -124,4 +124,7 @@ def compact(receipt, context, workflow, maximum=None):
         shown = {ref for ref, _ in accepted}
         result['context']['task_match'] = any(row['matched_terms'] for row in selected
                                              if row['id'] + '@' + row['revision'] in shown)
-    return finish(result, maximum)
+    packet = finish(result, maximum)
+    if rendered_refs is not None:
+        rendered_refs.update(ref for ref, _ in accepted if ref is not None)
+    return packet

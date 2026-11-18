@@ -26,6 +26,7 @@
   "hivemind/connections.py",
   "hivemind/constellation.py",
   "hivemind/context_packet.py",
+  "hivemind/correction_checks.py",
   "hivemind/curation.py",
   "hivemind/demo.py",
   "hivemind/doctor.py",

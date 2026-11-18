@@ -308,12 +308,14 @@ def _session_metadata(item, scope):
         parts.append('Review overdue (' + item['stale_after'][:10] + ')')
     if handoff:
         parts.append(f"Current handoff: {handoff['evidence']}, observed {handoff['observed_at']}")
-        parts.append('Handoff source ' + handoff['source_id'])
+        source_id = handoff['source_id']
+        parts.append('Handoff source ' + source_id)
     else:
-        parts.append('Source ' + item['sources'][0]['id'])
+        source_id = item['sources'][0]['id']
+        parts.append('Source ' + source_id)
     if item['cluster'] != scope:
         parts.append(item['cluster'])
-    return f"## {_short(item['title'], 10)} [{item['id']}]\n" + ' · '.join(parts)
+    return f"## {_short(item['title'], 10)} [{item['id']}]\n" + ' · '.join(parts), source_id
 
 
 def task_brief(root, target='.', task='', budget=1200, include_blocks=False, corrections=None):
@@ -382,7 +384,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False, cor
     for index, (n, reason) in enumerate(candidates):
         item = _provenance(n, records[n['id']][1], reason)
         item['matched_terms'] = hits.get(n['id'], {}).get('matched_terms', [])
-        meta = _session_metadata(item, scope) if include_blocks else _metadata(item)
+        meta, source_id = _session_metadata(item, scope) if include_blocks else (_metadata(item), None)
         needed = len(meta.split())
         if remaining - needed < 10:
             if not selected:
@@ -398,7 +400,7 @@ def task_brief(root, target='.', task='', budget=1200, include_blocks=False, cor
         block = meta + '\n\n' + body
         blocks.append(block)
         selected.append(item)
-        reading_blocks.append({'ref': item['id'] + '@' + item['revision'], 'metadata': meta,
+        reading_blocks.append({'ref': item['id'] + '@' + item['revision'], 'metadata': meta, 'source_id': source_id,
                                'paragraphs': body.split('\n\n')})
         remaining -= len(block.split())
         if index == 0 and rule:

@@ -132,15 +132,26 @@ def _view(view, max_bytes):
         byte_limit(max_bytes)
 
 
-def _response(session, context, workflow, view, max_bytes):
+def _offer(root, session, context, workflow, view, max_bytes, task, stage):
+    rendered = set()
     if view == 'compact':
         if __package__:
             from .context_packet import compact
         else:
             from context_packet import compact
-        return compact(session, context, workflow, max_bytes)
-    return {**session, 'offered': _merge_offered(session['offered'], _offered(context, workflow)),
-            'context': {k: v for k, v in context.items() if not k.startswith('_')}, 'workflow': workflow}
+        result = compact(session, context, workflow, max_bytes, rendered_refs=rendered)
+    else:
+        rendered.update(block['ref'] for block in context['_reading_blocks'])
+        result = {**session, 'offered': _merge_offered(session['offered'], _offered(context, workflow)),
+                  'context': {k: v for k, v in context.items() if not k.startswith('_')}, 'workflow': workflow}
+    session['offered'] = _merge_offered(session['offered'], result['offered'])
+    _save(root, session)
+    if __package__:
+        from . import correction_checks
+    else:
+        import correction_checks
+    correction_checks.observe(root, session, task, stage, context['_reading_blocks'], rendered)
+    return result
 
 
 def _refresh(root, session, task, budget, source=None, view='full', max_bytes=None, corrections=None):
@@ -155,10 +166,7 @@ def _refresh(root, session, task, budget, source=None, view='full', max_bytes=No
         session['runtime']['last_source'] = source
         session['runtime'].pop('ended_at', None)
         session['runtime'].pop('end_reason', None)
-    result = _response(session, context, workflow, view, max_bytes)
-    session['offered'] = _merge_offered(session['offered'], result['offered'])
-    _save(root, session)
-    return result
+    return _offer(root, session, context, workflow, view, max_bytes, task, 'refresh')
 
 
 def _runtime_id(value):
@@ -225,10 +233,7 @@ def open_session(root, target=".", agent="codex", task="", budget=1200, session_
             value['runtime'] = {'id': runtime_id, 'source': runtime_source, 'last_source': runtime_source}
             if related:
                 value['previous_session_id'] = related[-1]['session_id']
-        result = _response(value, context, workflow, view, max_bytes)
-        value['offered'] = result['offered']
-        _save(root, value)
-    return result
+        return _offer(root, value, context, workflow, view, max_bytes, task, 'startup')
 
 
 def session_context(root, session_id, task='', budget=1200, view='full', max_bytes=None, corrections=None):
