@@ -12,7 +12,7 @@ benchmark claiming measured improvement.
    HiveMind session ID is offered.
 3. Ask the agent to save this explicitly synthetic decision: “Use SQLite for the
    local prototype.” Have it attach the source and reason through the documented
-   session draft/close flow. Start a second session and ask which storage was
+   `session-close --record` command. Start a second session and ask which storage was
    chosen and why. Check both the answer and the offered HiveMind context.
 4. In `hive memory`, correct the decision to “Use a JSON file for the local
    prototype”, inspect the preview and confirm. Ask again in a fresh session.

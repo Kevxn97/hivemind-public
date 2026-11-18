@@ -23,10 +23,13 @@ import sys
 import tempfile
 import termios
 import time
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'hivemind'
+with (ROOT / 'pyproject.toml').open('rb') as metadata:
+    RELEASE_LABEL = 'v' + tomllib.load(metadata)['project']['version']
 if not __package__:
     sys.path.insert(0, str(ROOT))
 from hivemind import hive, sessions
@@ -240,32 +243,32 @@ class TerminalE2E(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr)
             return result.stdout.strip()
 
-        self.assertEqual(label(),'v0.1.0a2 · Git unavailable')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · Git unavailable')
         git('init','-q');git('config','user.name','Synthetic');git('config','user.email','test@example.invalid')
-        self.assertEqual(label(),'v0.1.0a2 · no commit')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · no commit')
         (repo/'.gitignore').write_text('ignored\n')
         (repo/'code.txt').write_text('original\n')
         git('add','.');git('-c','commit.gpgsign=false','commit','-qm','Synthetic fixture')
         head=git('rev-parse','--short=7','HEAD')
-        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head}')
         (repo/'ignored').write_text('ignored')
-        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head}')
         (repo/'code.txt').write_text('modified\n')
-        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head} · local changes')
         git('add','code.txt')
-        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head} · local changes')
         git('-c','commit.gpgsign=false','commit','-qm','Synthetic update')
         head=git('rev-parse','--short=7','HEAD')
-        self.assertEqual(label(),f'v0.1.0a2 · {head}')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head}')
         (repo/'new.txt').write_text('untracked')
-        self.assertEqual(label(),f'v0.1.0a2 · {head} · local changes')
+        self.assertEqual(label(),f'{RELEASE_LABEL} · {head} · local changes')
         nested=repo/'export';nested.mkdir()
-        self.assertEqual(label(nested),'v0.1.0a2 · Git unavailable')
-        self.assertEqual(label(custom_env={**env,'PATH':''}),'v0.1.0a2 · Git unavailable')
+        self.assertEqual(label(nested),f'{RELEASE_LABEL} · Git unavailable')
+        self.assertEqual(label(custom_env={**env,'PATH':''}),f'{RELEASE_LABEL} · Git unavailable')
 
         parent=self.root/'parent';parent.mkdir();subprocess.check_call(['git','-C',str(parent),'init','-q'])
         child=parent/'child';child.mkdir()
-        self.assertEqual(label(child),'v0.1.0a2 · Git unavailable')
+        self.assertEqual(label(child),f'{RELEASE_LABEL} · Git unavailable')
 
     def test_git_version_refresh_and_narrow_views_show_the_full_public_label(self):
         """A real PTY sees the refreshed dirty label on regular and immersive views."""
@@ -281,15 +284,15 @@ class TerminalE2E(unittest.TestCase):
         code=('import sys;sys.path.insert(0,'+repr(str(app))+');'
               'from hivemind.terminal_ui import run;raise SystemExit(run(sys.argv[1]))')
         session=self.terminal('git-version',code)
-        session.expect(f'v0.1.0a2 · {head}')
+        session.expect(f'{RELEASE_LABEL} · {head}')
         self.assertNotIn('local changes',session.screen_text())
         (app/'new.txt').write_text('Synthetic local change')
-        session.expect('v0.1.0a2 · '+head+' · local changes',timeout=13)
+        session.expect(f'{RELEASE_LABEL} · {head} · local changes',timeout=13)
         session.resize(54,17);session.drain(.3)
         for tab in '12345':
             session.send(tab);session.drain(.25)
             screen=session.screen_text()
-            self.assertIn('v0.1.0a2 · '+head+' · local changes',screen,
+            self.assertIn(f'{RELEASE_LABEL} · {head} · local changes',screen,
                           f'narrow regular/immersive label missing for tab {tab}')
             (self.output/f'git-version-54x17-tab-{tab}.screen.txt').write_text(screen, encoding='utf-8')
         session.send('q');self.assertEqual(session.wait(),0)

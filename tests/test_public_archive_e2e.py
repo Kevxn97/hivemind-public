@@ -1,4 +1,5 @@
 """Release archives contain only explicitly reviewed files, never vault/history."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,11 +23,12 @@ class PublicArchiveE2E(unittest.TestCase):
         self.out = self.folder / 'release'
         # Starting data is synthetic: an allowlist, a tiny app, and a fake Git history.
         (self.source / 'hivemind').mkdir()
-        (self.source / 'hivemind/__init__.py').write_text("__version__ = '0.1.0a2'\n")
+        (self.source / 'hivemind/__init__.py').write_text('"""Synthetic package."""\n')
+        (self.source / 'pyproject.toml').write_text('[project]\nversion = "1.2.3a4"\n')
         (self.source / 'README.md').write_text('# Synthetic project\n')
         (self.source / '.git').mkdir()
         (self.source / '.git/private-history').write_text('SYNTHETIC_GIT_HISTORY_SENTINEL')
-        self.manifest = ['README.md', 'hivemind/__init__.py']
+        self.manifest = ['README.md', 'hivemind/__init__.py', 'pyproject.toml']
         self.save()
 
     def save(self):
@@ -43,11 +45,14 @@ class PublicArchiveE2E(unittest.TestCase):
         self.run_release()
         archives = list(self.out.glob('*.zip'))
         self.assertEqual(len(archives), 1)
+        self.assertEqual(archives[0].name, 'hivemind-public-1.2.3a4.zip')
         with zipfile.ZipFile(archives[0]) as archive:
             names = archive.namelist()
             self.assertEqual(sorted(names), sorted(['hivemind-public/' + f for f in self.manifest] + ['hivemind-public/RELEASE_FILES.json']))
             self.assertNotIn(b'SYNTHETIC_GIT_HISTORY_SENTINEL', b''.join(archive.read(f) for f in names))
         report = json.loads((self.out / 'release-manifest.json').read_text())
+        self.assertEqual(report['archive'], archives[0].name)
+        self.assertEqual(report['archive_sha256'], hashlib.sha256(archives[0].read_bytes()).hexdigest())
         self.assertEqual(report['status'], 'prepared')
         self.assertEqual(report['included_files'], len(self.manifest) + 1)
 

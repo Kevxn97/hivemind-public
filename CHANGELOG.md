@@ -1,8 +1,17 @@
 # Changes
 
-- Route simple connected-agent handoffs consistently to `--record` in startup guidance and compact/full follow-up commands; preserve structured drafts for complex updates.
+## 0.1.0a3 — 2026-11-18
 
-## Unreleased
+- The README opens with a local demo of a corrected decision across two agent
+  adapters. The GitHub prerelease includes the reviewed source ZIP, an
+  installable wheel and SHA-256 checksums for both downloads.
+- **Correction checks.** Mark a journaled correction, save a follow-up question
+  and choose Codex or Claude. Inspect which revision and source new sessions
+  were offered in their context. Record separately whether the answer
+  used the correction and whether you had to repeat it.
+- Optional Dreaming links a project hint to two independently confirmed
+  corrections. A user approves it before matching tasks can receive it.
+  Dreaming starts off in each vault.
 
 - Simple handoffs accept explicit source, observation time, reviewed revision
   and decision/question flags with `session-close --record`; they use the same

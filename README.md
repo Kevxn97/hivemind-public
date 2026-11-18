@@ -6,23 +6,26 @@ HiveMind is a local second brain I'm building for myself and sharing here. It
 keeps project decisions, sources, and open questions in a place that Codex and
 Claude can use between sessions.
 
-I started building it to keep project context around between sessions. I wanted
-that knowledge in files I can read on my own machine, so HiveMind stores it in
-a separate Markdown vault and keeps a history of changes.
+## Try the demo first
 
-I like the idea that my context can grow over time, that better models can make
-use of it, and that it stays with me when I switch tools. This is an early
-personal project, and I'm still working on it. If you try it, let me know what
-you think.
+Download the [v0.1.0a3 source ZIP](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/hivemind-public-0.1.0a3.zip),
+extract it, and open a terminal in the `hivemind-public` folder. You'll need
+Python 3.11+ on macOS or Linux with SQLite FTS5.
 
-The core uses Python's standard library. You'll need Python 3.11+ and macOS or
-Linux with SQLite FTS5. Windows isn't supported directly; WSL may work but hasn't
-been verified.
+```sh
+python3 run.py demo
+```
 
-## Start
+Watch a project decision change from **three retries** to **five**. A fresh
+session receives the correction, and you can still inspect the original source
+and revision. The demo runs locally in a temporary example project, simulates
+both agent connections, and prints paths to the transcript and report.
 
-Download the [source ZIP](https://github.com/Kevxn97/hivemind-public/archive/refs/heads/main.zip),
-extract it, open a terminal in the folder, and run:
+[Demo walkthrough](docs/DEMO.md) · [SHA-256 checksums for the downloads](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/SHA256SUMS)
+
+## Set up your own project
+
+From the same folder, run
 
 ```sh
 python3 run.py
@@ -51,6 +54,11 @@ you can choose one by name or number.
 
 ## What the memory adds
 
+I started building HiveMind because I wanted my project context to stay with me
+when I switch tools. The vault is a folder of Markdown files I can read on my
+own machine. This is an early personal project. If you try it, let me know
+what you think.
+
 A project instruction file is a good place for stable working rules. HiveMind
 keeps changing project knowledge separately: what was decided, why, where the
 claim came from, and which correction replaced it. Codex and Claude can retrieve
@@ -61,8 +69,15 @@ For example, record `hive remember "Use SQLite for the local pilot" --type decis
 A later session can retrieve that decision. If the project moves to PostgreSQL,
 use the previewed correction flow in [Memory controls](docs/MEMORY.md); the next
 session should use the corrected decision and retain the old one as history.
-Controlled live tests have exercised this flow. Reliable everyday benefit still
-needs a representative continuity pilot; test counts alone do not establish it.
+An earlier alpha exercised the correction in a real Codex session. The demo
+above shows exactly what the local Codex and Claude adapters offer. To try
+the switch with your own agent, follow the [first-user check](docs/TRY_IT.md).
+
+If a particular correction matters, open **Correction checks** in `hive memory`.
+Choose the corrected note, save a typical follow-up question and select the
+agent you'll ask next. After the switch, you can see which revision and source
+HiveMind offered. Once you've read the answer, record whether it used the
+correction and whether you had to correct it again. [Memory controls](docs/MEMORY.md)
 
 Canonical Markdown is readable in your editor. Saving an external change makes
 HiveMind report an integrity mismatch until you explicitly review and journal it.
@@ -80,7 +95,7 @@ view it full size.
 [![HiveMind network view showing connections between example notes](assets/screenshots/network.png)](assets/screenshots/network.png)
 
 The header shows the release version and, in a source checkout, the short Git
-commit: for example, `v0.1.0a2 · abc1234 · local changes`. The Git label refreshes
+commit, such as `v0.1.0a3 · abc1234 · local changes`. The Git label refreshes
 with the normal terminal snapshot, about every ten seconds. `local changes`
 includes staged, unstaged and untracked files; ignored files do not count.
 It describes the application checkout, independently of your selected vault.
@@ -91,30 +106,23 @@ Release versions remain manually managed in `hivemind/hive_version.py` and
 
 ## Install the `hive` command
 
-If you'd rather use `hive` as a command, you can install it in a virtual
-environment:
+Download the [v0.1.0a3 wheel](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/hivemind_local-0.1.0a3-py3-none-any.whl).
+In the folder containing the wheel, run
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install .
+.venv/bin/python -m pip install --no-index --no-deps ./hivemind_local-0.1.0a3-py3-none-any.whl
 source .venv/bin/activate
-hive setup
+hive demo
 ```
+
+Run `hive setup` when you're ready to connect your own project. The core uses
+Python's standard library. Native Windows is unsupported and WSL is unverified.
 
 The examples below use `hive`. If you're running from the downloaded folder,
 use `python3 run.py` instead. To connect an agent, `hive connect codex` shows a
 preview of the instructions and hooks; add `--apply` to install them. Use
 `claude` for Claude Code. `disconnect AGENT --apply` removes the connection.
-
-## See it work in two minutes
-
-If you want to look around first, run `python3 run.py demo` from the downloaded
-folder, or `hive demo` after installation. It creates a separate example
-project, saves and corrects a decision, and checks what the next session sees.
-You don't need an account or a model call. The printed paths lead to a readable
-transcript and a report of the run.
-
-[Replay the demo](docs/DEMO.md) · [Try it with your own agent](docs/TRY_IT.md)
 
 ## Stay in control
 
@@ -174,7 +182,7 @@ also available for more detailed agent automation.
 
 You can choose a vault with `--root PATH` or `HIVEMIND_HOME`. If neither is set,
 HiveMind uses `~/.local/share/hivemind`. Keep your vault outside the application
-folder. This repo contains the app, schemas, and synthetic tests; my personal
+folder. This repo contains the app, schemas, and synthetic tests. My personal
 vault, operational state, and its history are separate.
 
 Nothing is imported and no background service is enabled during initialization.
@@ -299,4 +307,4 @@ synthetic; live execution and any claim about daily usefulness are separate.
 
 Source is available in [hivemind-public](https://github.com/Kevxn97/hivemind-public).
 The Python package has not been published to a registry; install from this source
-tree or a locally built wheel.
+tree or the wheel attached to the GitHub prerelease.

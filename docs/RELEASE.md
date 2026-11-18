@@ -20,18 +20,28 @@ before uploading. A local archive is preparation, not publication.
 
 The Python package includes code, schemas and neutral integration templates only.
 It has no runtime dependency on a particular home directory or previous checkout.
-Distribution metadata currently describes an alpha on Python 3.11+ and POSIX.
-The supported local acceptance environment is macOS; Linux requires its own
-target-environment acceptance before being claimed as tested.
+The package targets Python 3.11+ on POSIX systems with SQLite FTS5. The CI
+matrix exercises Ubuntu and macOS with Python 3.11 and 3.14.
 
 The project uses the [MIT license](../LICENSE). Its public source repository is
 [Kevxn97/hivemind-public](https://github.com/Kevxn97/hivemind-public).
 The Python package has not been published to a package registry.
 
-## Prepared 0.1.0a2 package
+## Verify the v0.1.0a3 downloads
 
-The [changelog](../CHANGELOG.md) covers memory controls, the synthetic demo and
-optional source connections. To verify a candidate before publication:
+Download the reviewed ZIP, wheel and `SHA256SUMS` from the
+[v0.1.0a3 prerelease](https://github.com/Kevxn97/hivemind-public/releases/tag/v0.1.0a3)
+into the same directory. Verify both files from that directory.
+
+```sh
+shasum -a 256 -c SHA256SUMS   # macOS
+# On Linux, use sha256sum -c SHA256SUMS
+```
+
+## Build the release candidate
+
+Start in a clean checkout of the candidate commit. Use a new output directory
+and Python environment for each build.
 
 ```sh
 python3 scripts/verify.py
@@ -46,11 +56,17 @@ HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/veri
 HIVEMIND_TEST_PYTHON=/tmp/hivemind-release-check/bin/python python3 scripts/verify.py --pattern test_source_connections_e2e.py
 ```
 
-Use an empty output directory and a new environment when previous artifacts
-exist. The source archive, wheel and sdist are local release candidates; building
-them does not upload or publish anything. Review their contents against the
-allowlist before publication. The source archive includes the CI definition and
-documentation, while the installed package contains only its runtime resources.
+Review the built archive and wheel contents against the allowlist and candidate
+commit. The source ZIP includes the CI definition, tests and documentation.
+The wheel contains the runtime package and distribution metadata. Generate
+the download checksums from the exact files you will attach to the prerelease.
+
+```sh
+(cd ../hivemind-public-release && shasum -a 256 hivemind-public-0.1.0a3.zip hivemind_local-0.1.0a3-py3-none-any.whl > SHA256SUMS)
+```
+
+Attach the ZIP, wheel and `SHA256SUMS` to the same GitHub prerelease. Verify
+the hosted downloads with the published checksums.
 
 The [GitHub Actions workflow](../.github/workflows/ci.yml) repeats the source and
 installed acceptance on macOS/Linux and Python 3.11/3.14 with no provider account.
@@ -88,5 +104,5 @@ adapter follows the documented lifecycle JSON in the
 
 After connecting, open a fresh agent session in the registered project, verify
 that a HiveMind session ID is offered, save one explicitly authorized decision
-through the draft/close flow, and verify it in the next session. Do this on the
+with `session-close --record`, and verify it in the next session. Do this on the
 actual host before describing that host integration as verified.

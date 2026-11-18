@@ -5,8 +5,10 @@ import datetime as dt
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import re
 import sys
 import tempfile
+import tomllib
 import zipfile
 
 FORBIDDEN = {'.git', '.history', '.state', '.cache', 'wiki', 'sources', 'INBOX',
@@ -49,8 +51,12 @@ def prepare(source, out):
                 continue
             if path.is_symlink() or (path.is_file() and str(path.relative_to(source)) not in selected):
                 raise ValueError('Unreviewed source/resource file: ' + str(path.relative_to(source)))
+    metadata = tomllib.loads(data.get('pyproject.toml', b'').decode('utf-8'))
+    version = metadata.get('project', {}).get('version')
+    if not isinstance(version, str) or not re.fullmatch(r'[0-9][0-9a-zA-Z.!+_-]*', version):
+        raise ValueError('Reviewed pyproject.toml must supply a version safe for the archive filename')
     out.mkdir(parents=True, exist_ok=True)
-    archive = out / 'hivemind-public-0.1.0a2.zip'
+    archive = out / f'hivemind-public-{version}.zip'
     with tempfile.NamedTemporaryFile(dir=out, suffix='.zip', delete=False) as temp:
         temporary = Path(temp.name)
     try:
