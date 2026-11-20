@@ -2,9 +2,10 @@
 
 <img src="assets/branding/hivemind.png" alt="HiveMind: a gold H-shaped honeycomb beside the gold and ivory wordmark" width="480">
 
-HiveMind is a local second brain I'm building for myself and sharing here. It
-keeps project decisions, sources, and open questions in a place that Codex and
-Claude can use between sessions.
+HiveMind is an open-source project memory for anyone who uses Codex or Claude.
+It keeps your project decisions, sources, and open questions in Markdown files
+on your machine, so you can pick up where you left off in a new session, even
+when you switch agents.
 
 ## Try the demo first
 
