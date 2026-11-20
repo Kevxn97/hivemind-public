@@ -5,9 +5,10 @@ from pathlib import Path
 import sqlite3
 import sys
 if __package__:
-    from . import agent_contract, dreaming
+    from . import agent_contract, agent_memory, dreaming
 else:
     import agent_contract
+    import agent_memory
     import dreaming
 
 
@@ -19,11 +20,12 @@ class ArgumentParser(argparse.ArgumentParser):
 COMMANDS = {'project-register', 'project-unregister', 'projects', 'session-open', 'session-context', 'session-draft',
             'session-close', 'session-status', 'why', 'impact', 'lessons',
             'changes', 'feedback', 'session-end', 'session-feedback', 'session-metrics', 'doctor', 'contract', 'evidence',
-            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'adopt', 'dreaming'}
+            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'adopt', 'dreaming', 'agent-memory'}
 
 
 def configure(sub):
     dreaming.configure(sub)
+    agent_memory.configure(sub)
     p = sub.add_parser('adopt', help='Preview or journal an external edit to one existing Markdown note')
     p.add_argument('id')
     p.add_argument('--actor', required=True); p.add_argument('--reason', required=True)
@@ -96,6 +98,8 @@ def configure(sub):
     p.add_argument('session_id'); p.add_argument('--outcome', required=True, choices=('helpful', 'unhelpful', 'not_used'))
     p.add_argument('--used', action='append', default=[], metavar='ID@REVISION')
     p.add_argument('--cited', action='append', default=[], metavar='ID@REVISION')
+    p.add_argument('--used-memory', action='append', default=[], metavar='MEMORY_ID',
+                   help='Memory offered in this session that contributed to the outcome')
     p.add_argument('--missing', default='none', choices=('none', 'context', 'stale', 'evidence', 'decision', 'next_step', 'other'))
     p.add_argument('--actor', choices=('agent', 'user'), default='agent')
     p = sub.add_parser('session-metrics', help='Count offered context and explicit feedback separately')
@@ -146,6 +150,8 @@ def _references(values):
 
 def _execute(args, root):
     command = args.command
+    if command == 'agent-memory':
+        return agent_memory.execute(args, root)
     if command == 'dreaming':
         return dreaming.execute(args, root)
     if command == 'adopt':
@@ -205,7 +211,8 @@ def _execute(args, root):
             return sessions.end_session(root, args.session_id, args.reason)
         if command == 'session-feedback':
             return sessions.feedback(root, args.session_id, args.outcome, _references(args.used),
-                                     _references(args.cited), args.missing, args.actor)
+                                     _references(args.cited), args.missing, args.actor,
+                                     used_memories=args.used_memory)
         if command == 'session-metrics':
             return sessions.metrics(root, args.cluster)
         if command == 'session-context':

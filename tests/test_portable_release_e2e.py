@@ -164,6 +164,26 @@ else:
                 if event == 'SessionStart':
                     offered = value['hookSpecificOutput']['additionalContext']
                     session_id = re.search(r'HiveMind session: ([0-9a-f]{32})', offered).group(1)
+                    self.assertIn('agent-memory remember', offered[:1000])
+                    if agent == 'codex':
+                        stored = self.cli('--root', self.vault, 'agent-memory', 'remember', session_id,
+                                          '--topic', 'SQLite migration', '--attempt', 'Copied before checkpoint',
+                                          '--result', 'The copy missed the latest write.',
+                                          '--when', 'Migrating a SQLite vault', '--json')
+                        memory_id = stored['memory_id']
+                        proof = self.vault / 'sources' / 'synthetic-migration.txt'
+                        proof.parent.mkdir(exist_ok=True)
+                        proof.write_text('Synthetic migration observation.\n', encoding='utf-8')
+                        self.cli('--root', self.vault, 'agent-memory', 'share', session_id, memory_id,
+                                 '--source', 'sources/synthetic-migration.txt', '--json')
+                    else:
+                        packet = self.cli('--root', self.vault, 'session-context', session_id,
+                                          '--task', 'Check SQLite migration', '--budget', '500', '--json')
+                        self.assertEqual(packet['memory_refs'], [memory_id])
+                        self.assertIn('The copy missed the latest write.', packet['context']['text'])
+                        rated = self.cli('--root', self.vault, 'session-feedback', session_id,
+                                         '--outcome', 'helpful', '--used-memory', memory_id, '--json')
+                        self.assertEqual(rated['feedback']['used_memories'], [memory_id])
                 else:
                     self.assertEqual(value['matched'], 1)
             self.cli('--root', self.vault, 'session-close', session_id, '--no-change', '--json')
@@ -173,6 +193,32 @@ else:
         self.assertEqual(report['summary']['error'], 0)
         self.assertEqual(before, snapshot(self.folder))
         self.assertIn('unverified', json.dumps(report).lower())
+
+    def test_paused_public_vault_keeps_agent_memory_readable_and_blocks_writes(self):
+        self.init(self.vault)
+        root = ('--root', self.vault)
+        session = self.cli(*root, 'session-open', self.project, '--agent', 'codex', '--json')['session_id']
+        remember = (*root, 'agent-memory', 'remember', session, '--topic', 'SQLite migration',
+                    '--attempt', 'Copied before checkpoint', '--when', 'SQLite migration', '--result')
+        ident = self.cli(*remember, 'Observation before the pause.', '--json')['memory_id']
+        proof = self.vault / 'sources' / 'synthetic-pause.txt'
+        proof.parent.mkdir(exist_ok=True)
+        proof.write_text('Synthetic migration observation.\n', encoding='utf-8')
+        pause = (*root, 'memory', 'pause', '--reason', 'Synthetic pause')
+        preview = self.cli(*pause, '--json')['preview']
+        self.cli(*pause, '--apply', '--preview', preview, '--json')
+        packet = self.cli(*root, 'session-context', session, '--task', 'SQLite migration', '--json')
+        self.assertEqual(packet['memory_refs'], [ident])
+        remember_error = self.cli(*remember, 'Observation during the pause.', '--json', ok=False)
+        share_error = self.cli(*root, 'agent-memory', 'share', session, ident,
+                               '--source', 'sources/synthetic-pause.txt', '--json', ok=False)
+        for error in (remember_error, share_error):
+            self.assertEqual(error['error_code'], 'INVALID_STATE')
+        resume = (*root, 'memory', 'resume', '--reason', 'Synthetic review finished')
+        preview = self.cli(*resume, '--json')['preview']
+        self.cli(*resume, '--apply', '--preview', preview, '--json')
+        self.assertEqual(self.cli(*root, 'agent-memory', 'share', session, ident,
+                                  '--source', 'sources/synthetic-pause.txt', '--json')['status'], 'proposed')
 
     def test_self_test_proves_handoff_without_touching_selected_vault(self):
         self.init(self.vault)

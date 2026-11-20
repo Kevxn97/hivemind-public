@@ -1,11 +1,15 @@
 """A bounded working packet shared by session entry and task refresh."""
 import datetime as dt
 from pathlib import Path
+import sqlite3
 
 if __package__:
-    from . import hive
+    from . import agent_memory, hive
+    from .agent_contract import AgentError
 else:
+    import agent_memory
     import hive
+    from agent_contract import AgentError
 if __package__:
     from . import insights
 else:
@@ -20,7 +24,7 @@ else:
     import work_items
 
 
-def build(root, target, task, budget, previous_at=None, corrections=None):
+def build(root, target, task, budget, previous_at=None, corrections=None, *, agent=None):
     root = Path(root).resolve()
     if isinstance(budget, bool) or not isinstance(budget, int) or not 120 <= budget <= 2000:
         raise ValueError('Context budget must be 120..2000 words')
@@ -84,11 +88,25 @@ def build(root, target, task, budget, previous_at=None, corrections=None):
             break
         extra.append(line)
         used += size
-    context = project_context.task_brief(root, target, task=task, budget=budget - used, include_blocks=True,
-                                         corrections=corrections)
+    available = budget - used
+    memories = []
+    if agent and task and available > 240:
+        try:
+            memories = agent_memory.select(root, route['cluster'], agent, task, min(220, available - 240, available // 3))
+        except (AgentError, OSError, sqlite3.Error):
+            warning = 'Agent memories could not be loaded from the local store.'
+            gaps.append(warning)
+            extra.append(warning)
+            available -= len(warning.split())
+    memory_words = sum(len(memory['text'].split()) for memory in memories)
+    context = project_context.task_brief(root, target, task=task, budget=available - memory_words,
+                                         include_blocks=True, corrections=corrections)
     if context['selected'][0]['revision'] != hive.digest(raw):
         raise ValueError('Project changed while preparing context; retry session-open/session-context')
     text = context['text'] + ('\n' + '\n\n'.join(extra) + '\n' if extra else '')
+    if memories:
+        text += '\n\n' + '\n\n'.join(memory['text'] for memory in memories)
+        context.update(_agent_memories=memories, task_match=True)
     context.update(text=text, budget=budget, word_count=len(text.split()), _supplement=extra)
     if context.get('task_match') is False:
         gaps.append('No matching task evidence found; do not infer an answer from word matches.')

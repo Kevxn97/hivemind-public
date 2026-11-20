@@ -122,6 +122,52 @@ reason and revision. The processing switch and incoming knowledge commits use
 the canonical vault lock, so a completed pause prevents subsequent incoming
 commits until resume. Ordinary explicit draft/apply remains a manual write path.
 
+## Agent memories
+
+Once the actual task is known, use `session-context SESSION_ID --task TASK` to
+retrieve matching memories alongside current project context. Use the same agent
+identity for each session. The installed Codex and Claude startup adapters use
+`codex` and `claude`. CLI callers can supply their own stable name to
+`session-open --agent`.
+
+```bash
+hive agent-memory remember SESSION_ID \
+  --topic "SQLite migration" \
+  --attempt "Copied the database while its journal was still active" \
+  --result "The copied fixture missed the last write" \
+  --when "Migrating a vault with an active SQLite journal"
+hive session-context NEXT_SESSION_ID --task "Verify the SQLite migration"
+```
+
+An agent saves a short observation from its own active session. The memory is
+scoped to that agent and project. Repeating the same write returns the same
+memory ID. Treat observations as context and verify them where the task requires
+it. For a lesson useful to other agents, write an attributable local evidence
+file under `sources/` or `INBOX/`, then explicitly share it.
+
+```bash
+hive agent-memory share SESSION_ID MEMORY_ID --source sources/migration-report.md
+hive session-feedback NEXT_SESSION_ID --outcome helpful --used-memory MEMORY_ID
+```
+
+Agents in the same project can retrieve the shared observation as a proposed
+lesson while the source matches its recorded hash. The hash establishes source
+identity. Review the source for what its contents support. When useful, curate
+a durable project lesson through the existing note workflow.
+
+`memory_refs` lists the memories actually included in the current response.
+`session-status` tracks the accumulated `memory_offered` IDs. Feedback accepts
+only offered IDs. The latest explicit rating per memory and episode contributes
+one signal for that agent, after task relevance. Both views respect the word
+budget. The compact view also respects the UTF-8 byte cap.
+
+Memories live in `.state/agent-memory.sqlite3` and the feedback identifiers live
+in local session receipts. Both stay on the current device. Agent names scope
+retrieval within a vault shared by callers with local filesystem access.
+
+The incoming processing pause applies to saving and sharing agent memories.
+Reading existing context remains available during a pause.
+
 ## Agent integration
 
 `memory_control.configure(sub)` and `execute(args, root)` provide the CLI adapter.

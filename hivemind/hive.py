@@ -1065,7 +1065,8 @@ def session_hook(root, agent='claude', budget=1200):
             return 0
         prefix = ("HiveMind session: {session_id}\n"
                   "Project write reference: {reference}\nSession opened: {opened_at}\n"
-                  "Use supplied context; refresh with session-context only when needed. Follow the connected handoff commands. "
+                  "Use supplied context. When the task is known, use session-context SESSION_ID --task TASK to recall matching memories. "
+                  "Use agent-memory remember --help to save a useful observation. "
                   "Simple handoff: use session-close --record with the project write reference, source and observation time; no session-draft. Read existing decisions/questions with evidence ID@REVISION --section handoff. Only named step_updates change. For requested close without change use session-close --no-change.\n\n")
         offered = sessions.open_session(root, target, agent=agent, budget=budget - len(prefix.split()),
                                         runtime_id=event.get('session_id'),

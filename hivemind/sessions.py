@@ -144,7 +144,14 @@ def _offer(root, session, context, workflow, view, max_bytes, task, stage):
         rendered.update(block['ref'] for block in context['_reading_blocks'])
         result = {**session, 'offered': _merge_offered(session['offered'], _offered(context, workflow)),
                   'context': {k: v for k, v in context.items() if not k.startswith('_')}, 'workflow': workflow}
+        if context.get('_agent_memories'):
+            result['memory_refs'] = [memory['id'] for memory in context['_agent_memories']]
     session['offered'] = _merge_offered(session['offered'], result['offered'])
+    if result.get('memory_refs'):
+        memories = list(dict.fromkeys(session.get('memory_offered', []) + result['memory_refs']))
+        if len(memories) > 512:
+            raise AgentError('LIMIT_EXCEEDED', 'Session has 512 offered memories; start a new work episode')
+        session['memory_offered'] = memories
     _save(root, session)
     if __package__:
         from . import correction_checks
@@ -160,7 +167,7 @@ def _refresh(root, session, task, budget, source=None, view='full', max_bytes=No
     else:
         from session_context import build
     context, workflow = build(root, session['cluster'], task, budget, session.get('previous_context_at'),
-                              corrections=corrections)
+                              corrections=corrections, agent=session['agent'])
     session['refreshed_at'] = _now()
     if source is not None:
         session['runtime']['last_source'] = source
@@ -224,7 +231,7 @@ def open_session(root, target=".", agent="codex", task="", budget=1200, session_
             raise AgentError('SESSION_EXISTS', "Session already exists; inspect session-status or open a new session")
         previous = context_baseline(root, route["cluster"])
         context, workflow = build(root, target, task, budget, previous['at'] if previous else None,
-                                  corrections=corrections)
+                                  corrections=corrections, agent=agent)
         value = {"schema_version": 1, "session_id": ident, "agent": agent,
                  "cluster": context["cluster"], "status": "context_offered",
                  "opened_at": _now(), "previous_context_at": previous["at"] if previous else None,
@@ -277,21 +284,25 @@ def end_runtime(root, agent, runtime_id, reason='other'):
     return {'matched': len(rows)}
 
 
-def feedback(root, session_id, outcome, used=None, cited=None, missing='none', actor='agent'):
+def feedback(root, session_id, outcome, used=None, cited=None, missing='none', actor='agent', *, used_memories=None):
     """Explicit metadata reports, separate from evidence that context was offered."""
     if __package__:
         from .agent_contract import validate
     else:
         from agent_contract import validate
     data = {'outcome': outcome, 'used': used or [], 'cited': cited or [], 'missing': missing, 'actor': actor}
+    if used_memories:
+        data['used_memories'] = used_memories
     try:
         validate('feedback', data)
     except ValueError as error:
         raise AgentError('INVALID_ARGUMENT', str(error)) from error
     used_pairs = {(r['id'], r['revision']) for r in data['used']}
     cited_pairs = {(r['id'], r['revision']) for r in data['cited']}
-    if not cited_pairs <= used_pairs or (outcome == 'not_used' and (used_pairs or cited_pairs)):
+    if not cited_pairs <= used_pairs or (outcome == 'not_used' and (used_pairs or used_memories)):
         raise AgentError('INVALID_ARGUMENT', 'Citations require explicit use; not_used cannot report use or citations')
+    if used_memories:
+        data['used_memories'] = sorted(set(used_memories))
     data['used'] = [{'id': i, 'revision': r} for i, r in sorted(used_pairs)]
     data['cited'] = [{'id': i, 'revision': r} for i, r in sorted(cited_pairs)]
     ident = hive.digest(json.dumps(data, sort_keys=True, separators=(',', ':')))
@@ -300,6 +311,8 @@ def feedback(root, session_id, outcome, used=None, cited=None, missing='none', a
         offered = {(r['id'], r['revision']) for r in session['offered']}
         if not used_pairs <= offered:
             raise AgentError('INVALID_ARGUMENT', 'Use must reference exact revisions offered in this session')
+        if not set(used_memories or ()) <= set(session.get('memory_offered', ())):
+            raise AgentError('INVALID_ARGUMENT', 'Memory use must reference memories offered in this session')
         reports = session.setdefault('feedback', [])
         for report in reports:
             if report['id'] == ident:
@@ -310,6 +323,26 @@ def feedback(root, session_id, outcome, used=None, cited=None, missing='none', a
         reports.append(report)
         _save(root, session)
     return {'session_id': session_id, 'feedback': report}
+
+
+def memory_scores(root, project, agent, ids):
+    """Count the latest explicit report per memory and episode for this agent."""
+    scores = {}
+    outcomes = {'helpful': 1, 'unhelpful': -1}
+    for path in (Path(root) / '.state' / 'sessions').glob('*.json'):
+        session = json.loads(path.read_text(encoding='utf-8'))
+        if session.get('agent') != agent or session.get('cluster') != project:
+            continue
+        offered = ids.intersection(session.get('memory_offered', ()))
+        if not offered:
+            continue
+        latest = {}
+        for report in session.get('feedback', ()):
+            for ident in offered.intersection(report.get('used_memories', ())):
+                latest[ident] = outcomes[report['outcome']]
+        for ident, score in latest.items():
+            scores[ident] = scores.get(ident, 0) + score
+    return scores
 
 
 def metrics(root, cluster=None):

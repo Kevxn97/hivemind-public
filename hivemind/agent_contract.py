@@ -15,7 +15,7 @@ SCHEMAS = Path(__file__).resolve().parent / 'schemas'
 KINDS = ('receipt', 'session', 'compact-session', 'evidence', 'draft', 'handoff', 'draft-result', 'error', 'feedback', 'feedback-result')
 COMMANDS = {'session-open', 'session-context', 'session-draft', 'session-close', 'session-status',
             'session-end', 'session-feedback', 'session-metrics', 'doctor', 'contract', 'evidence',
-            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft'}
+            'review-plan', 'review-record', 'verify-plan', 'verify-draft', 'learn-draft', 'agent-memory'}
 ERROR_CODES = ('INVALID_ARGUMENT', 'SESSION_NOT_FOUND', 'SESSION_EXISTS', 'SESSION_CLOSED',
                'REVISION_CONFLICT', 'INVALID_HANDOFF', 'INVALID_STATE', 'IO_ERROR',
                'RECOVERY_REQUIRED', 'LIMIT_EXCEEDED', 'UNKNOWN_PROJECT', 'INTERNAL_ERROR', 'SCHEMA_INVALID')

@@ -130,6 +130,10 @@ Run `hive memory` or press **m** in the terminal to see the memory menu. From
 there, you can inspect memories and their sources, correct or archive an entry,
 undo a change, or pause incoming updates.
 
+Agents can also save their own task observations, recall them in fresh sessions,
+and share evidence-backed proposed lessons with other agents on the project.
+See [Agent memories](docs/MEMORY.md#agent-memories).
+
 ```sh
 hive memory list
 hive memory show PROJECT_ID

@@ -59,6 +59,7 @@
       },
       "maxItems": 64
     },
+    "used_memories": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/memory_id"}, "maxItems": 64},
     "missing": {
       "enum": [
         "none",
