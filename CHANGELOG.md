@@ -1,5 +1,16 @@
 # Changes
 
+## 0.1.0a4 — 2026-11-20
+
+- **Agent memories.** Agents can save task observations locally and recall them
+  in later matching sessions for the same project. Share an observation as a
+  proposed lesson with a local evidence file whose hash can be checked.
+- **Memory feedback.** The latest explicit rating breaks ties between equally
+  relevant memories. Restoring an earlier rating records the change. Repeating
+  the same feedback while its ratings are current reuses the receipt.
+- **Correction checks.** An offer at startup appears under Startup. A matching
+  context refresh produces the follow-up entry.
+
 ## 0.1.0a3 — 2026-11-18
 
 - The README opens with a local demo of a corrected decision across two agent

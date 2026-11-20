@@ -27,10 +27,10 @@ The project uses the [MIT license](../LICENSE). Its public source repository is
 [Kevxn97/hivemind-public](https://github.com/Kevxn97/hivemind-public).
 The Python package has not been published to a package registry.
 
-## Verify the v0.1.0a3 downloads
+## Verify the v0.1.0a4 downloads
 
 Download the reviewed ZIP, wheel and `SHA256SUMS` from the
-[v0.1.0a3 prerelease](https://github.com/Kevxn97/hivemind-public/releases/tag/v0.1.0a3)
+[v0.1.0a4 prerelease](https://github.com/Kevxn97/hivemind-public/releases/tag/v0.1.0a4)
 into the same directory. Verify both files from that directory.
 
 ```sh
@@ -62,7 +62,7 @@ The wheel contains the runtime package and distribution metadata. Generate
 the download checksums from the exact files you will attach to the prerelease.
 
 ```sh
-(cd ../hivemind-public-release && shasum -a 256 hivemind-public-0.1.0a3.zip hivemind_local-0.1.0a3-py3-none-any.whl > SHA256SUMS)
+(cd ../hivemind-public-release && shasum -a 256 hivemind-public-0.1.0a4.zip hivemind_local-0.1.0a4-py3-none-any.whl > SHA256SUMS)
 ```
 
 Attach the ZIP, wheel and `SHA256SUMS` to the same GitHub prerelease. Verify

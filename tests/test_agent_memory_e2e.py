@@ -110,8 +110,16 @@ class AgentMemoryE2E(unittest.TestCase):
         self.assertEqual(self.cli(*report), feedback)
         self.assertEqual(self.open()['memory_refs'][0], lower)
         self.assertFalse(self.open(task='Typography and motion').get('memory_refs'))
+        other = review['memory_refs'][0]
+        self.cli('session-feedback', review['session_id'], '--outcome', 'unhelpful', '--used-memory', other)
+        self.assertEqual(self.cli(*report), feedback)
+
         self.cli('session-feedback', review['session_id'], '--outcome', 'unhelpful', '--used-memory', lower)
         self.assertEqual(self.open()['memory_refs'][-1], lower)
+        restored = self.cli(*report)
+        self.assertNotEqual(restored['feedback']['id'], feedback['feedback']['id'])
+        self.assertEqual(self.open()['memory_refs'][0], lower)
+        self.assertEqual(self.cli(*report), restored)
 
     def test_budget_omission_does_not_count_as_offer(self):
         creator = self.open(task='')['session_id']

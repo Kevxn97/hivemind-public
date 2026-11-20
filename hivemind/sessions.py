@@ -284,6 +284,14 @@ def end_runtime(root, agent, runtime_id, reason='other'):
     return {'matched': len(rows)}
 
 
+def _latest_memory_outcomes(reports):
+    latest = {}
+    for report in reports:
+        for memory_id in report.get('used_memories', ()):
+            latest[memory_id] = report['outcome']
+    return latest
+
+
 def feedback(root, session_id, outcome, used=None, cited=None, missing='none', actor='agent', *, used_memories=None):
     """Explicit metadata reports, separate from evidence that context was offered."""
     if __package__:
@@ -299,10 +307,11 @@ def feedback(root, session_id, outcome, used=None, cited=None, missing='none', a
         raise AgentError('INVALID_ARGUMENT', str(error)) from error
     used_pairs = {(r['id'], r['revision']) for r in data['used']}
     cited_pairs = {(r['id'], r['revision']) for r in data['cited']}
-    if not cited_pairs <= used_pairs or (outcome == 'not_used' and (used_pairs or used_memories)):
+    memory_ids = set(data.get('used_memories', ()))
+    if not cited_pairs <= used_pairs or (outcome == 'not_used' and (used_pairs or memory_ids)):
         raise AgentError('INVALID_ARGUMENT', 'Citations require explicit use; not_used cannot report use or citations')
-    if used_memories:
-        data['used_memories'] = sorted(set(used_memories))
+    if memory_ids:
+        data['used_memories'] = sorted(memory_ids)
     data['used'] = [{'id': i, 'revision': r} for i, r in sorted(used_pairs)]
     data['cited'] = [{'id': i, 'revision': r} for i, r in sorted(cited_pairs)]
     ident = hive.digest(json.dumps(data, sort_keys=True, separators=(',', ':')))
@@ -311,14 +320,21 @@ def feedback(root, session_id, outcome, used=None, cited=None, missing='none', a
         offered = {(r['id'], r['revision']) for r in session['offered']}
         if not used_pairs <= offered:
             raise AgentError('INVALID_ARGUMENT', 'Use must reference exact revisions offered in this session')
-        if not set(used_memories or ()) <= set(session.get('memory_offered', ())):
+        if not memory_ids <= set(session.get('memory_offered', ())):
             raise AgentError('INVALID_ARGUMENT', 'Memory use must reference memories offered in this session')
         reports = session.setdefault('feedback', [])
-        for report in reports:
-            if report['id'] == ident:
+        for report in reversed(reports):
+            submitted = {key: value for key, value in report.items() if key not in ('id', 'at')}
+            if submitted != data:
+                continue
+            latest = _latest_memory_outcomes(reports)
+            if all(latest.get(memory_id) == outcome for memory_id in memory_ids):
                 return {'session_id': session_id, 'feedback': report}
+            # Restoring a previous rating is a new event in this feedback history.
+            ident = hive.digest(f"{ident}:{reports[-1]['id']}")
+            break
         if len(reports) >= 32:
-            raise AgentError('LIMIT_EXCEEDED', 'At most 32 distinct feedback reports per session')
+            raise AgentError('LIMIT_EXCEEDED', 'At most 32 feedback reports per session')
         report = {'id': ident, 'at': _now(), **data}
         reports.append(report)
         _save(root, session)
@@ -336,12 +352,9 @@ def memory_scores(root, project, agent, ids):
         offered = ids.intersection(session.get('memory_offered', ()))
         if not offered:
             continue
-        latest = {}
-        for report in session.get('feedback', ()):
-            for ident in offered.intersection(report.get('used_memories', ())):
-                latest[ident] = outcomes[report['outcome']]
-        for ident, score in latest.items():
-            scores[ident] = scores.get(ident, 0) + score
+        latest = _latest_memory_outcomes(session.get('feedback', ()))
+        for ident in offered.intersection(latest):
+            scores[ident] = scores.get(ident, 0) + outcomes[latest[ident]]
     return scores
 
 

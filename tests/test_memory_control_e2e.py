@@ -165,6 +165,10 @@ class MemoryControlE2E(unittest.TestCase):
         ref = ident + '@' + corrected['revision']
         check_id = self.memory('check', 'add', ref, '--question', question, '--agent', 'claude')['check']['id']
         session = self.cli('session-open', str(self.project), '--agent', 'claude', '--task', question)['session_id']
+        startup, = self.memory('check', 'show', check_id)['runs']
+        self.assertEqual(startup['startup']['observed_ref'], ref)
+        self.assertIsNone(startup['question_context'])
+
         edited = self.mutate('edit', ident, '--summary', 'Use seven import retries.',
                              '--body', '# Import retries\n\nUse seven import retries.',
                              '--source', 'user:revised-policy', '--reason', 'Update the retry policy')

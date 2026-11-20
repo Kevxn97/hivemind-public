@@ -215,7 +215,7 @@ def observe(root, session, task, stage, blocks, rendered):
             fields = []
             if stage == 'startup' and run['startup'] is None:
                 fields.append('startup')
-            if matches and run['question_context'] != observed:
+            if stage == 'refresh' and matches and run['question_context'] != observed:
                 fields.append('question_context')
             if fields and run['review'] is None:
                 for field in fields:

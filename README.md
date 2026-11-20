@@ -8,7 +8,7 @@ Claude can use between sessions.
 
 ## Try the demo first
 
-Download the [v0.1.0a3 source ZIP](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/hivemind-public-0.1.0a3.zip),
+Download the [v0.1.0a4 source ZIP](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a4/hivemind-public-0.1.0a4.zip),
 extract it, and open a terminal in the `hivemind-public` folder. You'll need
 Python 3.11+ on macOS or Linux with SQLite FTS5.
 
@@ -21,7 +21,7 @@ session receives the correction, and you can still inspect the original source
 and revision. The demo runs locally in a temporary example project, simulates
 both agent connections, and prints paths to the transcript and report.
 
-[Demo walkthrough](docs/DEMO.md) · [SHA-256 checksums for the downloads](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/SHA256SUMS)
+[Demo walkthrough](docs/DEMO.md) · [SHA-256 checksums for the downloads](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a4/SHA256SUMS)
 
 ## Set up your own project
 
@@ -95,7 +95,7 @@ view it full size.
 [![HiveMind network view showing connections between example notes](assets/screenshots/network.png)](assets/screenshots/network.png)
 
 The header shows the release version and, in a source checkout, the short Git
-commit, such as `v0.1.0a3 · abc1234 · local changes`. The Git label refreshes
+commit, such as `v0.1.0a4 · abc1234 · local changes`. The Git label refreshes
 with the normal terminal snapshot, about every ten seconds. `local changes`
 includes staged, unstaged and untracked files; ignored files do not count.
 It describes the application checkout, independently of your selected vault.
@@ -106,12 +106,12 @@ Release versions remain manually managed in `hivemind/hive_version.py` and
 
 ## Install the `hive` command
 
-Download the [v0.1.0a3 wheel](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a3/hivemind_local-0.1.0a3-py3-none-any.whl).
+Download the [v0.1.0a4 wheel](https://github.com/Kevxn97/hivemind-public/releases/download/v0.1.0a4/hivemind_local-0.1.0a4-py3-none-any.whl).
 In the folder containing the wheel, run
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install --no-index --no-deps ./hivemind_local-0.1.0a3-py3-none-any.whl
+.venv/bin/python -m pip install --no-index --no-deps ./hivemind_local-0.1.0a4-py3-none-any.whl
 source .venv/bin/activate
 hive demo
 ```

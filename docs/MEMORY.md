@@ -65,10 +65,11 @@ hive memory check show CHECK_ID
 
 Open a fresh session for the chosen agent in the same project and ask your
 saved question. HiveMind records the revision and source label in the startup
-context it offered. The most recent matching context request before your review
-is shown separately. Saving your review fixes both observations for that session.
-A startup with an unrelated explicit task
-is skipped. A matching question ignores capitalization and extra whitespace.
+context it offered. A startup with the saved question records a startup offer.
+A separate matching context refresh fills the follow-up entry. Saving your
+review fixes both observations for that session. A startup with an unrelated
+explicit task is skipped. A matching question ignores capitalization and extra
+whitespace.
 Saving a check does not change which memories are selected for the agent.
 
 Use **s Show** to find the session ID. After reading the actual answer, choose
@@ -158,8 +159,10 @@ a durable project lesson through the existing note workflow.
 `memory_refs` lists the memories actually included in the current response.
 `session-status` tracks the accumulated `memory_offered` IDs. Feedback accepts
 only offered IDs. The latest explicit rating per memory and episode contributes
-one signal for that agent, after task relevance. Both views respect the word
-budget. The compact view also respects the UTF-8 byte cap.
+one signal for that agent, after task relevance. Restoring a previous rating
+records a new report. Repeating the same feedback while its ratings are current
+reuses its receipt. Both views respect the word budget. The compact view also
+respects the UTF-8 byte cap.
 
 Memories live in `.state/agent-memory.sqlite3` and the feedback identifiers live
 in local session receipts. Both stay on the current device. Agent names scope

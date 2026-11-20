@@ -13,7 +13,7 @@ import subprocess
 
 # Keep the public release's manually managed version separate from Git's
 # short-lived source identity.  Packaging metadata mirrors this value.
-VERSION = '0.1.0a3'
+VERSION = '0.1.0a4'
 
 
 def version_label(source_dir=None):
